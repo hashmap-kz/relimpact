@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/hashmap-kz/relimpact/internal/diffs"
+
 	"golang.org/x/tools/go/packages"
 )
 
@@ -45,6 +47,13 @@ func main() {
 	newAPI := snapshotAPI(tmpNew)
 
 	diffAPI(oldAPI, newAPI)
+
+	// docs diffs
+
+	docsDiffs := diffs.DiffDocs(tmpOld, tmpNew)
+	for _, section := range docsDiffs {
+		fmt.Println(section)
+	}
 }
 
 func checkoutWorktree(ref string) string {
@@ -84,12 +93,7 @@ func snapshotAPI(dir string) map[string]APIPackage {
 	}
 
 	api := make(map[string]APIPackage)
-
 	for _, pkg := range pkgs {
-		//if packages.PrintErrors(pkg) > 0 {
-		//	continue
-		//}
-
 		if len(pkg.Errors) > 0 {
 			fmt.Fprintf(os.Stderr, "Errors in package %s:\n", pkg.PkgPath)
 			for _, err := range pkg.Errors {
@@ -111,7 +115,6 @@ func snapshotAPI(dir string) map[string]APIPackage {
 
 		scope := pkg.Types.Scope()
 		for _, name := range scope.Names() {
-
 			// TODO: check type is exporter, i.e.: public API
 
 			obj := scope.Lookup(name)
