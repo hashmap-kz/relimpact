@@ -218,7 +218,10 @@ func diffAPI(oldAPI, newAPI map[string]APIPackage) {
 				fmt.Printf("- Type added in `%s`: `%s`\n", path, tname)
 				continue
 			}
-			diffList(fmt.Sprintf("Type `%s` Fields", tname), path, oldType.Fields, newType.Fields)
+
+			// diffList(fmt.Sprintf("Type `%s` Fields", tname), path, oldType.Fields, newType.Fields)
+			diffs.DiffStructFields(path, tname, oldType.Fields, newType.Fields)
+
 			diffList(fmt.Sprintf("Type `%s` Methods", tname), path, oldType.Methods, newType.Methods)
 		}
 		for tname := range oldPkg.Types {
