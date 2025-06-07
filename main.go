@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/hashmap-kz/relimpact/internal/diffs"
-	"github.com/hashmap-kz/relimpact/internal/git_utils"
+	"github.com/hashmap-kz/relimpact/internal/gitutils"
 )
 
 func main() {
@@ -20,11 +20,11 @@ func main() {
 
 	// API
 
-	tmpOld := git_utils.CheckoutWorktree(*oldRef)
-	defer git_utils.CleanupWorktree(tmpOld)
+	tmpOld := gitutils.CheckoutWorktree(*oldRef)
+	defer gitutils.CleanupWorktree(tmpOld)
 
-	tmpNew := git_utils.CheckoutWorktree(*newRef)
-	defer git_utils.CleanupWorktree(tmpNew)
+	tmpNew := gitutils.CheckoutWorktree(*newRef)
+	defer gitutils.CleanupWorktree(tmpNew)
 
 	oldAPI := diffs.SnapshotAPI(tmpOld)
 	newAPI := diffs.SnapshotAPI(tmpNew)

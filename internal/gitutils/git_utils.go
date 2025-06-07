@@ -1,4 +1,4 @@
-package git_utils
+package gitutils
 
 import (
 	"log"
