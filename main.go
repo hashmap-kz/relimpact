@@ -51,8 +51,21 @@ func main() {
 	// docs diffs
 
 	docsDiffs := diffs.DiffDocs(tmpOld, tmpNew)
-	for _, section := range docsDiffs {
-		fmt.Println(section)
+	if len(docsDiffs) > 0 {
+		for _, section := range docsDiffs {
+			fmt.Println(section)
+		}
+	}
+
+	// others
+
+	// Define which file types you care about
+	// TODO: configurable
+	includeExts := []string{".sh", ".sql", ".json", ".yaml", ".yml", ".conf", ".ini", ".txt", ".csv"}
+
+	otherSection := diffs.DiffOtherFiles(*oldRef, *newRef, includeExts)
+	if otherSection != "" {
+		fmt.Println(otherSection)
 	}
 }
 
