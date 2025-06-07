@@ -2,28 +2,37 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
+	"go/types"
+	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"strings"
+
+	"golang.org/x/tools/go/packages"
 )
 
-type GoPackage struct {
-	ImportPath string
-	Name       string
-	Export     []string
+type APIPackage struct {
+	Funcs  []string           `json:"funcs"`
+	Vars   []string           `json:"vars"`
+	Consts []string           `json:"consts"`
+	Types  map[string]APIType `json:"types"`
+}
+
+type APIType struct {
+	Kind    string   `json:"kind"`   // struct, interface, etc.
+	Fields  []string `json:"fields"` // for structs
+	Methods []string `json:"methods"`
 }
 
 func main() {
-	oldRef := flag.String("old", "", "Old git ref (required)")
-	newRef := flag.String("new", "", "New git ref (required)")
+	oldRef := flag.String("old", "", "Old git ref")
+	newRef := flag.String("new", "", "New git ref")
 	flag.Parse()
 
 	if *oldRef == "" || *newRef == "" {
-		fmt.Println("Usage: relimpact --old <old-ref> --new <new-ref>")
-		os.Exit(1)
+		log.Fatal("Usage: apidiff --old <ref> --new <ref>")
 	}
 
 	tmpOld := checkoutWorktree(*oldRef)
@@ -32,18 +41,16 @@ func main() {
 	tmpNew := checkoutWorktree(*newRef)
 	defer cleanupWorktree(tmpNew)
 
-	oldAPI := listGoAPI(tmpOld)
-	newAPI := listGoAPI(tmpNew)
+	oldAPI := snapshotAPI(tmpOld)
+	newAPI := snapshotAPI(tmpNew)
 
-	docsDiff := diffDocs(tmpOld, tmpNew)
-
-	reportMarkdown(oldAPI, newAPI, docsDiff)
+	diffAPI(oldAPI, newAPI)
 }
 
 func checkoutWorktree(ref string) string {
-	tmpDir, err := os.MkdirTemp("", "relimpact-"+ref)
+	tmpDir, err := os.MkdirTemp("", "apidiff-"+ref)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	run("git", "worktree", "add", "--detach", tmpDir, ref)
 	return tmpDir
@@ -53,103 +60,206 @@ func cleanupWorktree(path string) {
 	run("git", "worktree", "remove", "--force", path)
 }
 
-func listGoAPI(dir string) map[string]GoPackage {
-	cmd := exec.Command("go", "list", "-json", "./...")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "go list failed in %s: %v\n", dir, err)
-		return nil
-	}
-
-	dec := json.NewDecoder(bytes.NewReader(out))
-	apis := make(map[string]GoPackage)
-	for dec.More() {
-		var pkg struct {
-			ImportPath string
-			Name       string
-			Exports    []string
-		}
-		if err := dec.Decode(&pkg); err != nil {
-			panic(err)
-		}
-		apis[pkg.ImportPath] = GoPackage{
-			ImportPath: pkg.ImportPath,
-			Name:       pkg.Name,
-			Export:     pkg.Exports,
-		}
-	}
-	return apis
-}
-
-func diffDocs(oldDir, newDir string) []string {
-	var diffLines []string
-	cmd := exec.Command("git", "diff", "--no-index", "--", filepath.Join(oldDir, "docs"), filepath.Join(newDir, "docs"))
-	out, _ := cmd.CombinedOutput()
-	if len(out) > 0 {
-		diffLines = append(diffLines, "## Docs Changes\n```diff\n"+string(out)+"\n```\n")
-	}
-
-	// README diff
-	cmd = exec.Command("git", "diff", "--no-index", "--", filepath.Join(oldDir, "README.md"), filepath.Join(newDir, "README.md"))
-	out, _ = cmd.CombinedOutput()
-	if len(out) > 0 {
-		diffLines = append(diffLines, "## README.md Changes\n```diff\n"+string(out)+"\n```\n")
-	}
-	return diffLines
-}
-
-func reportMarkdown(oldAPI, newAPI map[string]GoPackage, docsDiff []string) {
-	fmt.Println("# Release Impact Report")
-	fmt.Println()
-
-	// API Diff
-	fmt.Println("## API Changes")
-	for path, newPkg := range newAPI {
-		oldPkg, ok := oldAPI[path]
-		if !ok {
-			fmt.Printf("- Package added: `%s`\n", path)
-			continue
-		}
-		oldSet := make(map[string]bool)
-		for _, e := range oldPkg.Export {
-			oldSet[e] = true
-		}
-		for _, e := range newPkg.Export {
-			if !oldSet[e] {
-				fmt.Printf("- Export added in `%s`: `%s`\n", path, e)
-			}
-		}
-	}
-
-	for path, oldPkg := range oldAPI {
-		if _, ok := newAPI[path]; !ok {
-			fmt.Printf("- Package removed: `%s`\n", path)
-		}
-		newSet := make(map[string]bool)
-		if newPkg, exists := newAPI[path]; exists {
-			for _, e := range newPkg.Export {
-				newSet[e] = true
-			}
-		}
-		for _, e := range oldPkg.Export {
-			if !newSet[e] {
-				fmt.Printf("- Export removed from `%s`: `%s`\n", path, e)
-			}
-		}
-	}
-
-	// Docs diff
-	for _, d := range docsDiff {
-		fmt.Println(d)
-	}
-}
-
 func run(name string, args ...string) {
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
+}
+
+func snapshotAPI(dir string) map[string]APIPackage {
+	cfg := &packages.Config{
+		Mode: packages.NeedName |
+			packages.NeedTypes |
+			packages.NeedSyntax |
+			packages.NeedTypesInfo |
+			packages.NeedImports,
+		Dir: dir,
+	}
+	pkgs, err := packages.Load(cfg, "./...")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	api := make(map[string]APIPackage)
+
+	for _, pkg := range pkgs {
+		//if packages.PrintErrors(pkg) > 0 {
+		//	continue
+		//}
+
+		if len(pkg.Errors) > 0 {
+			fmt.Fprintf(os.Stderr, "Errors in package %s:\n", pkg.PkgPath)
+			for _, err := range pkg.Errors {
+				fmt.Fprintf(os.Stderr, "  %v\n", err)
+			}
+			continue
+		}
+
+		if !strings.HasPrefix(pkg.PkgPath, getModulePath(dir)) {
+			continue
+		}
+
+		apkg := APIPackage{
+			Funcs:  []string{},
+			Vars:   []string{},
+			Consts: []string{},
+			Types:  make(map[string]APIType),
+		}
+
+		scope := pkg.Types.Scope()
+		for _, name := range scope.Names() {
+
+			// TODO: check type is exporter, i.e.: public API
+
+			obj := scope.Lookup(name)
+			switch o := obj.(type) {
+			case *types.Func:
+				if o.Type() != nil {
+					sig := o.Type().(*types.Signature)
+					apkg.Funcs = append(apkg.Funcs, name+signatureString(sig))
+				}
+			case *types.Var:
+				if o.IsField() {
+					continue
+				}
+				apkg.Vars = append(apkg.Vars, name+" "+o.Type().String())
+			case *types.Const:
+				apkg.Consts = append(apkg.Consts, name+" "+o.Type().String())
+			case *types.TypeName:
+				t := o.Type().Underlying()
+				atype := APIType{}
+				switch ut := t.(type) {
+				case *types.Struct:
+					atype.Kind = "struct"
+					for i := 0; i < ut.NumFields(); i++ {
+						f := ut.Field(i)
+						if f.Exported() {
+							atype.Fields = append(atype.Fields, f.Name()+" "+f.Type().String())
+						}
+					}
+				case *types.Interface:
+					atype.Kind = "interface"
+					for i := 0; i < ut.NumMethods(); i++ {
+						m := ut.Method(i)
+						atype.Methods = append(atype.Methods, m.Name()+signatureString(m.Type().(*types.Signature)))
+					}
+				default:
+					atype.Kind = fmt.Sprintf("%T", ut)
+				}
+
+				// Also collect methods of named types
+				methodSet := types.NewMethodSet(o.Type())
+				for i := 0; i < methodSet.Len(); i++ {
+					m := methodSet.At(i)
+					if m.Obj().Exported() {
+						atype.Methods = append(atype.Methods, m.Obj().Name()+signatureString(m.Obj().Type().(*types.Signature)))
+					}
+				}
+
+				apkg.Types[name] = atype
+			}
+		}
+
+		api[pkg.PkgPath] = apkg
+	}
+
+	return api
+}
+
+func signatureString(sig *types.Signature) string {
+	var b bytes.Buffer
+	b.WriteString("(")
+	for i := 0; i < sig.Params().Len(); i++ {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(sig.Params().At(i).Type().String())
+	}
+	b.WriteString(")")
+	if sig.Results().Len() > 0 {
+		b.WriteString(" → (")
+		for i := 0; i < sig.Results().Len(); i++ {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(sig.Results().At(i).Type().String())
+		}
+		b.WriteString(")")
+	}
+	return b.String()
+}
+
+func diffAPI(oldAPI, newAPI map[string]APIPackage) {
+	fmt.Println("# API Diff\n")
+
+	for path, newPkg := range newAPI {
+		oldPkg, ok := oldAPI[path]
+		if !ok {
+			fmt.Printf("## Package added: `%s`\n\n", path)
+			continue
+		}
+
+		// Funcs
+		diffList("Funcs", path, oldPkg.Funcs, newPkg.Funcs)
+		// Vars
+		diffList("Vars", path, oldPkg.Vars, newPkg.Vars)
+		// Consts
+		diffList("Consts", path, oldPkg.Consts, newPkg.Consts)
+		// Types
+		for tname, newType := range newPkg.Types {
+			oldType, ok := oldPkg.Types[tname]
+			if !ok {
+				fmt.Printf("- Type added in `%s`: `%s`\n", path, tname)
+				continue
+			}
+			diffList(fmt.Sprintf("Type `%s` Fields", tname), path, oldType.Fields, newType.Fields)
+			diffList(fmt.Sprintf("Type `%s` Methods", tname), path, oldType.Methods, newType.Methods)
+		}
+		for tname := range oldPkg.Types {
+			if _, ok := newPkg.Types[tname]; !ok {
+				fmt.Printf("- Type removed from `%s`: `%s`\n", path, tname)
+			}
+		}
+	}
+
+	for path := range oldAPI {
+		if _, ok := newAPI[path]; !ok {
+			fmt.Printf("## Package removed: `%s`\n\n", path)
+		}
+	}
+}
+
+func diffList(label, path string, oldList, newList []string) {
+	oldSet := make(map[string]bool)
+	for _, x := range oldList {
+		oldSet[x] = true
+	}
+	newSet := make(map[string]bool)
+	for _, x := range newList {
+		newSet[x] = true
+	}
+
+	for x := range newSet {
+		if !oldSet[x] {
+			fmt.Printf("- Added %s in `%s`: `%s`\n", label, path, x)
+		}
+	}
+	for x := range oldSet {
+		if !newSet[x] {
+			fmt.Printf("- Removed %s from `%s`: `%s`\n", label, path, x)
+		}
+	}
+}
+
+func getModulePath(dir string) string {
+	cmd := exec.Command("go", "list", "-m")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
 }
