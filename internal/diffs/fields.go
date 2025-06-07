@@ -6,7 +6,7 @@ import (
 )
 
 func DiffStructFields(path, typeName string, oldFields, newFields []string) {
-	oldMap := make(map[string]string) // FieldName → Type
+	oldMap := make(map[string]string) // FieldName -> Type
 	newMap := make(map[string]string)
 
 	// Parse "FieldName TypeString"
@@ -29,7 +29,7 @@ func DiffStructFields(path, typeName string, oldFields, newFields []string) {
 		if !existed {
 			fmt.Printf("- Added Field `%s` in `%s.%s`: `%s`\n", name, path, typeName, newType)
 		} else if oldType != newType {
-			fmt.Printf("- Field `%s` in `%s.%s` changed type: `%s` → `%s`\n", name, path, typeName, oldType, newType)
+			fmt.Printf("- Field `%s` in `%s.%s` changed type: `%s` -> `%s`\n", name, path, typeName, oldType, newType)
 		}
 	}
 

@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -14,9 +15,10 @@ import (
 )
 
 type DocInfo struct {
-	Headings []string
-	Links    []string
-	Images   []string
+	Headings    []string
+	Links       []string
+	Images      []string
+	SectionWord map[string]int // Section heading -> word count
 }
 
 func DiffDocs(oldDir, newDir string) []string {
@@ -51,9 +53,11 @@ func collectMarkdownFiles(oldDir, newDir string) []string {
 			}
 			if strings.HasSuffix(d.Name(), ".md") {
 				rel, err := filepath.Rel(base, path)
-				if err == nil && !seen[rel] {
-					seen[rel] = true
-					files = append(files, rel)
+				if err == nil {
+					if !seen[rel] {
+						seen[rel] = true
+						files = append(files, rel)
+					}
 				}
 			}
 			return nil
@@ -65,41 +69,52 @@ func collectMarkdownFiles(oldDir, newDir string) []string {
 	walk(oldDir)
 	walk(newDir)
 
+	sort.Strings(files)
 	return files
 }
 
 func parseDoc(path string) DocInfo {
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return DocInfo{}
+		return DocInfo{SectionWord: make(map[string]int)}
 	}
 
 	md := goldmark.New()
 	doc := md.Parser().Parse(text.NewReader(content))
 
-	var info DocInfo
+	info := DocInfo{
+		SectionWord: make(map[string]int),
+	}
+
+	currentHeading := "Document Root"
 
 	ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
+		if entering {
+			switch n := n.(type) {
+			case *ast.Heading:
+				headingText := string(n.Text(content))
+				info.Headings = append(info.Headings, headingText)
+				currentHeading = headingText
+			case *ast.Link:
+				dest := string(n.Destination)
+				info.Links = append(info.Links, dest)
+			case *ast.Image:
+				dest := string(n.Destination)
+				info.Images = append(info.Images, dest)
+			case *ast.Text:
+				words := countWords(string(n.Text(content)))
+				info.SectionWord[currentHeading] += words
+			}
 		}
-
-		switch n := n.(type) {
-		case *ast.Heading:
-			txt := string(n.Text(content))
-			info.Headings = append(info.Headings, txt)
-		case *ast.Link:
-			dest := string(n.Destination)
-			info.Links = append(info.Links, dest)
-		case *ast.Image:
-			dest := string(n.Destination)
-			info.Images = append(info.Images, dest)
-		}
-
 		return ast.WalkContinue, nil
 	})
 
 	return info
+}
+
+func countWords(text string) int {
+	fields := strings.Fields(text)
+	return len(fields)
 }
 
 func diffDoc(file string, oldInfo, newInfo DocInfo) string {
@@ -109,7 +124,12 @@ func diffDoc(file string, oldInfo, newInfo DocInfo) string {
 	linksAdded, linksRemoved := diffSets(oldInfo.Links, newInfo.Links)
 	imagesAdded, imagesRemoved := diffSets(oldInfo.Images, newInfo.Images)
 
-	if len(headingAdded)+len(headingRemoved)+len(linksAdded)+len(linksRemoved)+len(imagesAdded)+len(imagesRemoved) == 0 {
+	sectionWordDiff := diffSectionWordCounts(oldInfo.SectionWord, newInfo.SectionWord)
+
+	if len(headingAdded)+len(headingRemoved)+
+		len(linksAdded)+len(linksRemoved)+
+		len(imagesAdded)+len(imagesRemoved)+
+		len(sectionWordDiff) == 0 {
 		return ""
 	}
 
@@ -160,6 +180,15 @@ func diffDoc(file string, oldInfo, newInfo DocInfo) string {
 		b.WriteString("\n")
 	}
 
+	if len(sectionWordDiff) > 0 {
+		b.WriteString("### Section Word Count Changes:\n")
+		for _, line := range sectionWordDiff {
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+
 	return b.String()
 }
 
@@ -185,5 +214,34 @@ func diffSets(oldList, newList []string) (added, removed []string) {
 		}
 	}
 
+	sort.Strings(added)
+	sort.Strings(removed)
+
 	return added, removed
+}
+
+func diffSectionWordCounts(oldCounts, newCounts map[string]int) []string {
+	var lines []string
+	seen := make(map[string]bool)
+
+	// Check old sections
+	for sec, oldCount := range oldCounts {
+		newCount, exists := newCounts[sec]
+		seen[sec] = true
+		if !exists {
+			lines = append(lines, fmt.Sprintf("- Section `%s`: REMOVED (%d words)", sec, oldCount))
+		} else if oldCount != newCount {
+			lines = append(lines, fmt.Sprintf("- Section `%s`: %d -> %d words", sec, oldCount, newCount))
+		}
+	}
+
+	// Check new sections
+	for sec, newCount := range newCounts {
+		if !seen[sec] {
+			lines = append(lines, fmt.Sprintf("- Section `%s`: ADDED (%d words)", sec, newCount))
+		}
+	}
+
+	sort.Strings(lines)
+	return lines
 }

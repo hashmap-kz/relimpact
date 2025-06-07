@@ -183,7 +183,7 @@ func signatureString(sig *types.Signature) string {
 	}
 	b.WriteString(")")
 	if sig.Results().Len() > 0 {
-		b.WriteString(" → (")
+		b.WriteString(" -> (")
 		for i := 0; i < sig.Results().Len(); i++ {
 			if i > 0 {
 				b.WriteString(", ")
