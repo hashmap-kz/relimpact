@@ -103,32 +103,32 @@ brews:
     test: |
       system "#{bin}/relimpact"
 
-dockers:
-  - image_templates:
-      - "quay.io/hashmap_kz/relimpact:{{ .Version }}-amd64"
-    dockerfile: Dockerfile
-    extra_files:
-      - go.mod
-      - go.sum
-      - main.go
-      - internal/
-      - cmd/
-    build_flag_templates:
-      - "--label=io.artifacthub.package.readme-url=https://raw.githubusercontent.com/hashmap-kz/relimpact/master/README.md"
-      - '--label=io.artifacthub.package.maintainers=[{"name":"alexey.zh","email":"mailbox.stdio@gmail.com"}]'
-      - "--label=io.artifacthub.package.license=MIT"
-      - "--label=org.opencontainers.image.description=Release Impact Analyzer for Go projects"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.name={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.source={{.GitURL}}"
-      - "--platform=linux/amd64"
-
-docker_manifests:
-  - name_template: "quay.io/hashmap_kz/relimpact:{{ .Version }}"
-    image_templates:
-      - "quay.io/hashmap_kz/relimpact:{{ .Version }}-amd64"
-  - name_template: "quay.io/hashmap_kz/relimpact:latest"
-    image_templates:
-      - "quay.io/hashmap_kz/relimpact:{{ .Version }}-amd64"
+#dockers:
+#  - image_templates:
+#      - "quay.io/hashmap_kz/relimpact:{{ .Version }}-amd64"
+#    dockerfile: Dockerfile
+#    extra_files:
+#      - go.mod
+#      - go.sum
+#      - main.go
+#      - internal/
+#      - cmd/
+#    build_flag_templates:
+#      - "--label=io.artifacthub.package.readme-url=https://raw.githubusercontent.com/hashmap-kz/relimpact/master/README.md"
+#      - '--label=io.artifacthub.package.maintainers=[{"name":"alexey.zh","email":"mailbox.stdio@gmail.com"}]'
+#      - "--label=io.artifacthub.package.license=MIT"
+#      - "--label=org.opencontainers.image.description=Release Impact Analyzer for Go projects"
+#      - "--label=org.opencontainers.image.created={{.Date}}"
+#      - "--label=org.opencontainers.image.name={{.ProjectName}}"
+#      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+#      - "--label=org.opencontainers.image.version={{.Version}}"
+#      - "--label=org.opencontainers.image.source={{.GitURL}}"
+#      - "--platform=linux/amd64"
+#
+#docker_manifests:
+#  - name_template: "quay.io/hashmap_kz/relimpact:{{ .Version }}"
+#    image_templates:
+#      - "quay.io/hashmap_kz/relimpact:{{ .Version }}-amd64"
+#  - name_template: "quay.io/hashmap_kz/relimpact:latest"
+#    image_templates:
+#      - "quay.io/hashmap_kz/relimpact:{{ .Version }}-amd64"
