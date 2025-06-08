@@ -1,11 +1,11 @@
 package diffs
 
 import (
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/hashmap-kz/relimpact/internal/testutils"
 
 	"github.com/stretchr/testify/require"
 
@@ -54,24 +54,24 @@ func TestDiffOtherFilesStruct_IntegrationTempGit(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Init git repo
-	runGit(t, tmpDir, "init")
-	runGit(t, tmpDir, "config", "user.name", "Test User")
-	runGit(t, tmpDir, "config", "user.email", "test@example.com")
+	testutils.RunGit(t, tmpDir, "init")
+	testutils.RunGit(t, tmpDir, "config", "user.name", "Test User")
+	testutils.RunGit(t, tmpDir, "config", "user.email", "test@example.com")
 
 	// Write initial file
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "script.sh"), []byte("echo hello\n"), 0o600))
-	runGit(t, tmpDir, "add", "script.sh")
-	runGit(t, tmpDir, "commit", "-m", "initial commit")
+	testutils.RunGit(t, tmpDir, "add", "script.sh")
+	testutils.RunGit(t, tmpDir, "commit", "-m", "initial commit")
 	// After first commit
-	runGit(t, tmpDir, "tag", "oldref")
+	testutils.RunGit(t, tmpDir, "tag", "oldref")
 	oldRef := "oldref"
 
 	// Modify file
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "script.sh"), []byte("echo hello world\n"), 0o600))
 	// Add new file
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.json"), []byte(`{"key": "value"}`), 0o600))
-	runGit(t, tmpDir, "add", "-A")
-	runGit(t, tmpDir, "commit", "-m", "update files")
+	testutils.RunGit(t, tmpDir, "add", "-A")
+	testutils.RunGit(t, tmpDir, "commit", "-m", "update files")
 	newRef := "HEAD"
 
 	// Run DiffOtherFilesStruct
@@ -95,15 +95,4 @@ func TestDiffOtherFilesStruct_IntegrationTempGit(t *testing.T) {
 
 	assert.True(t, foundSh)
 	assert.True(t, foundJSON)
-}
-
-// TODO: testutils
-func runGit(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	err := cmd.Run()
-	require.NoError(t, err, "git command failed: git %v", args)
 }

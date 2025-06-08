@@ -2,9 +2,10 @@ package gitutils
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/hashmap-kz/relimpact/internal/testutils"
 
 	"github.com/stretchr/testify/require"
 )
@@ -13,15 +14,15 @@ func TestCheckoutAndCleanupWorktree(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Init git repo
-	runGit(t, tmpDir, "init")
-	runGit(t, tmpDir, "config", "user.name", "Test User")
-	runGit(t, tmpDir, "config", "user.email", "test@example.com")
+	testutils.RunGit(t, tmpDir, "init")
+	testutils.RunGit(t, tmpDir, "config", "user.name", "Test User")
+	testutils.RunGit(t, tmpDir, "config", "user.email", "test@example.com")
 
 	// Write a file
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "file.txt"), []byte("hello world"), 0o600))
-	runGit(t, tmpDir, "add", "file.txt")
-	runGit(t, tmpDir, "commit", "-m", "initial commit")
-	runGit(t, tmpDir, "tag", "v1")
+	testutils.RunGit(t, tmpDir, "add", "file.txt")
+	testutils.RunGit(t, tmpDir, "commit", "-m", "initial commit")
+	testutils.RunGit(t, tmpDir, "tag", "v1")
 
 	// Checkout worktree at v1
 	oldCwd, err := os.Getwd()
@@ -52,15 +53,4 @@ func TestCheckoutAndCleanupWorktree(t *testing.T) {
 	_, err = os.Stat(worktreeDir)
 	require.Error(t, err, "worktree dir should be removed")
 	require.True(t, os.IsNotExist(err), "worktree dir should be removed")
-}
-
-// TODO: testutils
-func runGit(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	err := cmd.Run()
-	require.NoError(t, err, "git command failed: git %v", args)
 }

@@ -1,11 +1,11 @@
 package diffs
 
 import (
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/hashmap-kz/relimpact/internal/testutils"
 
 	"github.com/hashmap-kz/relimpact/internal/gitutils"
 	"github.com/stretchr/testify/require"
@@ -96,10 +96,10 @@ func TestAPIDiff_IntegrationTempGit(t *testing.T) {
 	t.Log(tmpDir)
 
 	// Init git repo
-	runGit(t, tmpDir, "init")
-	runGit(t, tmpDir, "config", "user.name", "Test User")
-	runGit(t, tmpDir, "config", "user.email", "test@example.com")
-	runGo(t, tmpDir, "mod", "init", "mypkg")
+	testutils.RunGit(t, tmpDir, "init")
+	testutils.RunGit(t, tmpDir, "config", "user.name", "Test User")
+	testutils.RunGit(t, tmpDir, "config", "user.email", "test@example.com")
+	testutils.RunGo(t, tmpDir, "mod", "init", "mypkg")
 
 	// Create v1 of package
 	pkgDir := filepath.Join(tmpDir, "mypkg")
@@ -109,9 +109,9 @@ func TestAPIDiff_IntegrationTempGit(t *testing.T) {
 func Foo() {}
 `), 0o600))
 
-	runGit(t, tmpDir, "add", "-A")
-	runGit(t, tmpDir, "commit", "-m", "v1")
-	runGit(t, tmpDir, "tag", "v1")
+	testutils.RunGit(t, tmpDir, "add", "-A")
+	testutils.RunGit(t, tmpDir, "commit", "-m", "v1")
+	testutils.RunGit(t, tmpDir, "tag", "v1")
 
 	// Modify package -> add new function
 	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "bar.go"), []byte(`package mypkg
@@ -119,8 +119,8 @@ func Foo() {}
 func Bar() {}
 `), 0o600))
 
-	runGit(t, tmpDir, "add", "-A")
-	runGit(t, tmpDir, "commit", "-m", "add Bar")
+	testutils.RunGit(t, tmpDir, "add", "-A")
+	testutils.RunGit(t, tmpDir, "commit", "-m", "add Bar")
 
 	// Checkout old worktree
 	oldWorktree := gitutils.CheckoutWorktree(tmpDir, "v1")
@@ -147,15 +147,4 @@ func Bar() {}
 
 	// Optional: print diff for debug
 	t.Logf("API Diff:\n%s", apiDiff.String())
-}
-
-// TODO: testutils
-func runGo(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.Command("go", args...)
-	cmd.Dir = dir
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	err := cmd.Run()
-	require.NoError(t, err, "go command failed: go %v", args)
 }

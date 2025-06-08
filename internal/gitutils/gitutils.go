@@ -20,7 +20,6 @@ func CleanupWorktree(repoDir, path string) {
 	runGitInDir(repoDir, "worktree", "remove", "--force", path)
 }
 
-// TODO: testutils
 func runGitInDir(dir string, args ...string) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
