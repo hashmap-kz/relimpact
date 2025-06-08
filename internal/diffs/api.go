@@ -176,14 +176,21 @@ func (d *APIDiff) StringV1() string {
 }
 
 func SnapshotAPI(dir string) map[string]APIPackage {
+	//nolint:gocritic
+	// cfg := &packages.Config{
+	// 	Mode: packages.NeedName |
+	// 		packages.NeedTypes |
+	// 		packages.NeedSyntax |
+	// 		packages.NeedTypesInfo |
+	// 		packages.NeedImports,
+	// 	Dir: dir,
+	// }
+
 	cfg := &packages.Config{
-		Mode: packages.NeedName |
-			packages.NeedTypes |
-			packages.NeedSyntax |
-			packages.NeedTypesInfo |
-			packages.NeedImports,
-		Dir: dir,
+		Mode: packages.NeedName | packages.NeedTypes | packages.NeedImports,
+		Dir:  dir,
 	}
+
 	pkgs, err := packages.Load(cfg, "./...")
 	if err != nil {
 		log.Fatal(err)
