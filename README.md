@@ -1,6 +1,6 @@
 # relimpact
 
-**Release Impact Analyzer for Go projects - API Diff, Docs Diff & more**
+**Release Impact Analyzer for Go projects - catch breaking API changes, docs updates & important file diffs - fast.**
 
 [![License](https://img.shields.io/github/license/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/blob/master/LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/hashmap-kz/relimpact)](https://goreportcard.com/report/github.com/hashmap-kz/relimpact)
@@ -12,18 +12,20 @@
 
 ---
 
-- **API Diff** - track public API changes (structs, interfaces, functions, constants, variables) to catch breaking
-  changes before they reach your users
-- **Docs Diff** - section-aware, heading-aware, word count diff for Markdown docs to highlight meaningful content
-  changes, not noisy line diffs
-- **Other Files Diff** - group changes by extension (.sh, .sql, .json, etc.) to catch important migrations, scripts, and
-  auxiliary file updates
-- **Perfect for Release PR reviews** - helps reviewers see the real impact of each change at a glance
-- **Human-friendly Release Reports in Markdown** - designed to be copy-pasted into GitHub Releases, Slack, or changelogs
-- **Works great in GitHub Actions, GitLab CI, and locally** - easily integrates into your CI pipelines or local release
-  process
-- **Zero server required** - pure CLI tool - no services to deploy or manage, works entirely from your Git repo and your
-  terminal
+## Features
+
+- **API Diff** – Track breaking public API changes (structs, interfaces, functions, constants, variables) to prevent
+  surprises for your users.
+- **Docs Diff** – Section-aware, heading-aware Markdown diff to highlight meaningful content changes, not noisy line
+  diffs.
+- **Other Files Diff** – Group file changes by extension (.sh, .sql, .json, etc.) to surface important migrations,
+  scripts, and auxiliary file updates.
+- **Designed for Release PR reviews** – Helps reviewers quickly see the real impact of changes at a glance.
+- **Human-friendly Markdown Reports** – Ready to paste into GitHub Releases, Slack, or changelogs.
+- **Works in GitHub Actions, GitLab CI, or locally** – Integrates easily into your CI pipelines or local release
+  process.
+- **No server required** – Pure CLI tool. No services to deploy or manage - works entirely from your Git repo and
+  terminal.
 
 ---
 
@@ -47,9 +49,11 @@ relimpact --old v1.0.0 --new HEAD --output release-impact.md
 ## Documentation Changes: `README.md`
 
 ### Headings added:
+
 - Advanced Usage
 
 ### Section Word Count Changes:
+
 - Section `Quick Start`: 142 -> 155 words
 - Section `Deprecated Options`: REMOVED (45 words)
 - Section `New Features`: ADDED (67 words)
@@ -116,7 +120,7 @@ curl -LO https://github.com/hashmap-kz/relimpact/releases/latest/download/relimp
 sudo dpkg -i relimpact_linux_amd64.deb
 ```
 
-#### Apline Linux
+#### Alpine Linux
 
 ```bash
 apk update && apk add --no-cache bash curl
@@ -178,7 +182,6 @@ apk add relimpact_linux_amd64.apk --allow-untrusted
 - Built on top of **Git diff**:
     - Uses `git diff --name-status` under the hood.
     - Groups files per extension -> clean, easy to review.
-
 
 ---
 
