@@ -19,11 +19,11 @@ func main() {
 	}
 
 	// API
-	tmpOld := gitutils.CheckoutWorktree(*oldRef)
-	defer gitutils.CleanupWorktree(tmpOld)
+	tmpOld := gitutils.CheckoutWorktree(".", *oldRef)
+	defer gitutils.CleanupWorktree(".", tmpOld)
 
-	tmpNew := gitutils.CheckoutWorktree(*newRef)
-	defer gitutils.CleanupWorktree(tmpNew)
+	tmpNew := gitutils.CheckoutWorktree(".", *newRef)
+	defer gitutils.CleanupWorktree(".", tmpNew)
 
 	oldAPI := diffs.SnapshotAPI(tmpOld)
 	newAPI := diffs.SnapshotAPI(tmpNew)

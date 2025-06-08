@@ -1,7 +1,14 @@
 package diffs
 
 import (
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
+
+	"github.com/hashmap-kz/relimpact/internal/gitutils"
+	"github.com/stretchr/testify/require"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -82,4 +89,72 @@ func TestDiffAPI(t *testing.T) {
 
 	assert.Len(t, apiDiff.MethodsAdded, 1)
 	assert.Equal(t, "Baz()", apiDiff.MethodsAdded[0].X)
+}
+
+func TestAPIDiff_IntegrationTempGit(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Log(tmpDir)
+
+	// Init git repo
+	runGit(t, tmpDir, "init")
+	runGit(t, tmpDir, "config", "user.name", "Test User")
+	runGit(t, tmpDir, "config", "user.email", "test@example.com")
+	runGo(t, tmpDir, "mod", "init", "mypkg")
+
+	// Create v1 of package
+	pkgDir := filepath.Join(tmpDir, "mypkg")
+	require.NoError(t, os.MkdirAll(pkgDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "foo.go"), []byte(`package mypkg
+
+func Foo() {}
+`), 0o644))
+
+	runGit(t, tmpDir, "add", "-A")
+	runGit(t, tmpDir, "commit", "-m", "v1")
+	runGit(t, tmpDir, "tag", "v1")
+
+	// Modify package -> add new function
+	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "bar.go"), []byte(`package mypkg
+
+func Bar() {}
+`), 0o644))
+
+	runGit(t, tmpDir, "add", "-A")
+	runGit(t, tmpDir, "commit", "-m", "add Bar")
+
+	// Checkout old worktree
+	oldWorktree := gitutils.CheckoutWorktree(tmpDir, "v1")
+	defer gitutils.CleanupWorktree(tmpDir, oldWorktree)
+
+	// Snapshot API
+	oldAPI := SnapshotAPI(filepath.Join(oldWorktree, "mypkg"))
+	newAPI := SnapshotAPI(filepath.Join(tmpDir, "mypkg"))
+
+	// Diff
+	apiDiff := DiffAPI(oldAPI, newAPI)
+
+	// Assertions
+	require.NotEmpty(t, apiDiff.FuncsAdded)
+
+	foundBar := false
+	for _, f := range apiDiff.FuncsAdded {
+		if f.X == "Bar()" {
+			foundBar = true
+			break
+		}
+	}
+	require.True(t, foundBar, "expected Bar() to be reported as added")
+
+	// Optional: print diff for debug
+	t.Logf("API Diff:\n%s", apiDiff.String())
+}
+
+func runGo(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("go", args...)
+	cmd.Dir = dir
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	err := cmd.Run()
+	require.NoError(t, err, "go command failed: go %v", args)
 }

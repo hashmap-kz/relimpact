@@ -37,7 +37,7 @@ func TestCheckoutAndCleanupWorktree(t *testing.T) {
 	// git worktree must be run inside repo!
 	require.NoError(t, os.Chdir(tmpDir))
 
-	worktreeDir := CheckoutWorktree("v1")
+	worktreeDir := CheckoutWorktree(tmpDir, "v1")
 	t.Logf("Worktree dir: %s", worktreeDir)
 
 	// Verify worktree dir exists and contains file.txt
@@ -45,7 +45,7 @@ func TestCheckoutAndCleanupWorktree(t *testing.T) {
 	require.NoError(t, err, "file.txt should exist in worktree")
 
 	// Cleanup worktree
-	CleanupWorktree(worktreeDir)
+	CleanupWorktree(tmpDir, worktreeDir)
 
 	// Verify worktree dir is gone
 	_, err = os.Stat(worktreeDir)
