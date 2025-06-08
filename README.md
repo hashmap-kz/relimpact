@@ -108,8 +108,8 @@ jobs:
 
       - uses: hashmap-kz/relimpact-action@v1
         with:
-          old_ref: ${{ steps.prevtag.outputs.prev_tag }}
-          new_ref: HEAD
+          old-ref: ${{ steps.prevtag.outputs.prev_tag }}
+          new-ref: HEAD
           output: release-impact.md
 
       - name: Upload Release Impact Report
