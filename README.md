@@ -83,7 +83,11 @@ name: Release Impact on PR
 
 on:
   pull_request:
+    branches: [ master ]
     types: [opened, synchronize, reopened]
+  push:
+    tags:
+      - 'v*.*.*'
 
 jobs:
   release-impact:
@@ -112,6 +116,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-impact
+          path: release-impact.md
+
+      - name: Post to PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
           path: release-impact.md
 ```
 
