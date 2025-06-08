@@ -21,17 +21,17 @@ func CreateChangelog(repoDir, oldRef, newRef string) string {
 	newAPI := diffs.SnapshotAPI(tmpNew)
 
 	apiDiffResult := diffs.DiffAPI(oldAPI, newAPI)
-	sb.WriteString(apiDiffResult.String() + "\n")
+	sb.WriteString(apiDiffResult.String() + "\n---\n")
 
 	// docs
 	docsDiffs := diffs.DiffDocs(tmpOld, tmpNew)
-	sb.WriteString(diffs.FormatAllDocDiffs(docsDiffs) + "\n")
+	sb.WriteString(diffs.FormatAllDocDiffs(docsDiffs) + "\n---\n")
 
 	// others
 	// TODO: configurable
 	includeExts := []string{".sh", ".sql", ".json", ".yaml", ".yml", ".conf", ".ini", ".txt", ".csv"}
 	otherSection := diffs.DiffOtherFilesStruct(repoDir, oldRef, newRef, includeExts)
-	sb.WriteString(otherSection.String() + "\n")
+	sb.WriteString(otherSection.String() + "\n---\n")
 
 	return sb.String()
 }
