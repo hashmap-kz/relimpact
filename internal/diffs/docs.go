@@ -38,7 +38,7 @@ func FormatAllDocDiffs(diffs []DocDiff) string {
 	}
 
 	var b bytes.Buffer
-	b.WriteString("## Documentation Changes\n\n")
+	b.WriteString("\n---\n## Documentation Changes\n\n")
 
 	for i := range diffs {
 		b.WriteString(diffs[i].String())

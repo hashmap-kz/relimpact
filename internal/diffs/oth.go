@@ -28,7 +28,7 @@ func (s *OtherFilesDiffSummary) String() string {
 	}
 
 	var b bytes.Buffer
-	b.WriteString("## Other Files Changes\n\n")
+	b.WriteString("\n---\n## Other Files Changes\n\n")
 
 	for _, d := range s.Diffs {
 		b.WriteString(fmt.Sprintf("### `%s`\n\n", d.Ext))
