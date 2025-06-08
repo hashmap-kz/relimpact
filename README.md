@@ -143,7 +143,7 @@ name: Release Impact on PR
 on:
   pull_request:
     branches: [ master ]
-    types: [opened, synchronize, reopened]
+    types: [ opened, synchronize, reopened ]
   push:
     tags:
       - 'v*.*.*'
@@ -162,22 +162,38 @@ jobs:
         id: prevtag
         run: |
           git fetch --tags
-          PREV_TAG=$(git tag --sort=-version:refname | head -n2 | tail -n1)
+          TAG_LIST=$(git tag --sort=-version:refname)
+          PREV_TAG=$(echo "$TAG_LIST" | head -n2 | tail -n1)
+          echo "Previous tag: $PREV_TAG"
+          # Fallback to first tag if no previous
+          if [ -z "$PREV_TAG" ]; then
+            PREV_TAG=$(echo "$TAG_LIST" | head -n1)
+            echo "Fallback to first tag: $PREV_TAG"
+          fi
           echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
 
-      - uses: hashmap-kz/relimpact-action@v1
+      - name: Determine new ref
+        id: newref
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "new_ref=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "new_ref=HEAD" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: hashmap-kz/relimpact-action@main
         with:
           old-ref: ${{ steps.prevtag.outputs.prev_tag }}
-          new-ref: HEAD
+          new-ref: ${{ steps.newref.outputs.new_ref }}
           output: release-impact.md
 
       - name: Upload Release Impact Report
         uses: actions/upload-artifact@v4
         with:
-          name: release-impact
+          name: release-impact-${{ github.run_id }}-${{ github.run_attempt }}
           path: release-impact.md
 
-      - name: Post to PR
+      - name: Post Release Impact to PR
         if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
