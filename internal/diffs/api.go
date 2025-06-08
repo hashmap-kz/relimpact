@@ -3,6 +3,7 @@ package diffs
 import (
 	"bytes"
 	"fmt"
+	"go/token"
 	"go/types"
 	"log"
 	"os"
@@ -211,7 +212,9 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 
 		scope := pkg.Types.Scope()
 		for _, name := range scope.Names() {
-			// TODO: check type is exporter, i.e.: public API
+			if !token.IsExported(name) {
+				continue
+			}
 
 			obj := scope.Lookup(name)
 			switch o := obj.(type) {
