@@ -86,6 +86,23 @@ nfpms:
         file_info:
           mode: 0644
 
+brews:
+  - name: relimpact
+    repository:
+      owner: hashmap-kz
+      name: homebrew-tap
+      branch: main
+    commit_author:
+      name: alexey.zh
+      email: mailbox.stdio@gmail.com
+    homepage: https://github.com/hashmap-kz/homebrew-tap
+    description: "Release Impact Analyzer for Go projects"
+    license: "MIT"
+    install: |
+      bin.install "relimpact"
+    test: |
+      system "#{bin}/relimpact"
+
 dockers:
   - image_templates:
       - "quay.io/hashmap_kz/relimpact:{{ .Version }}-amd64"

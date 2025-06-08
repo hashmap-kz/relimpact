@@ -122,3 +122,9 @@ relimpact --old v1.0.0 --new HEAD --output release-impact.md
     - Uses `git diff --name-status` under the hood.
     - Groups files per extension -> clean, easy to review.
 
+
+---
+
+## License
+
+MIT License. See [LICENSE](./LICENSE) for details.
