@@ -143,7 +143,7 @@ func signatureString(sig *types.Signature) string {
 }
 
 func DiffAPI(oldAPI, newAPI map[string]APIPackage) {
-	fmt.Println("# API Diff\n")
+	fmt.Println("# API Diff")
 
 	for path, newPkg := range newAPI {
 		oldPkg, ok := oldAPI[path]
