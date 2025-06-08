@@ -5,47 +5,22 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/hashmap-kz/relimpact/internal/diffs"
-	"github.com/hashmap-kz/relimpact/internal/gitutils"
+	"github.com/hashmap-kz/relimpact/cmd"
 )
 
 func main() {
 	oldRef := flag.String("old", "", "Old git ref")
 	newRef := flag.String("new", "", "New git ref")
+	greedy := flag.Bool("greedy", false, "Maximum concurrency")
 	flag.Parse()
 
 	if *oldRef == "" || *newRef == "" {
-		log.Fatal("Usage: apidiff --old <ref> --new <ref>")
+		log.Fatal("Usage: relimpact --old <ref> --new <ref>")
 	}
 
-	// API
-
-	tmpOld := gitutils.CheckoutWorktree(*oldRef)
-	defer gitutils.CleanupWorktree(tmpOld)
-
-	tmpNew := gitutils.CheckoutWorktree(*newRef)
-	defer gitutils.CleanupWorktree(tmpNew)
-
-	oldAPI := diffs.SnapshotAPI(tmpOld)
-	newAPI := diffs.SnapshotAPI(tmpNew)
-
-	diffs.DiffAPI(oldAPI, newAPI)
-
-	// docs
-
-	docsDiffs := diffs.DiffDocs(tmpOld, tmpNew)
-	if len(docsDiffs) > 0 {
-		for _, section := range docsDiffs {
-			fmt.Println(section)
-		}
-	}
-
-	// others
-
-	// TODO: configurable
-	includeExts := []string{".sh", ".sql", ".json", ".yaml", ".yml", ".conf", ".ini", ".txt", ".csv"}
-	otherSection := diffs.DiffOtherFiles(*oldRef, *newRef, includeExts)
-	if otherSection != "" {
-		fmt.Println(otherSection)
+	if *greedy {
+		fmt.Println(cmd.CreateChangelog(".", *oldRef, *newRef))
+	} else {
+		fmt.Println(cmd.CreateChangelogSequential(".", *oldRef, *newRef))
 	}
 }

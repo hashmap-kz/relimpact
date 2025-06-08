@@ -21,8 +21,172 @@ type DocInfo struct {
 	SectionWord map[string]int // Section heading -> word count
 }
 
-func DiffDocs(oldDir, newDir string) []string {
-	var diffs []string
+type DocDiff struct {
+	File              string
+	HeadingsAdded     []string
+	HeadingsRemoved   []string
+	LinksAdded        []string
+	LinksRemoved      []string
+	ImagesAdded       []string
+	ImagesRemoved     []string
+	SectionWordChange []string // lines like "- Section `X`: 12 -> 34 words"
+}
+
+func FormatAllDocDiffs(diffs []DocDiff) string {
+	if len(diffs) == 0 {
+		return ""
+	}
+
+	var b bytes.Buffer
+	b.WriteString("\n---\n## Documentation Changes\n\n")
+
+	for i := range diffs {
+		b.WriteString(diffs[i].String())
+	}
+
+	return b.String()
+}
+
+func (d *DocDiff) String() string {
+	var b bytes.Buffer
+
+	b.WriteString(fmt.Sprintf("### Doc File: **`%s`**\n\n", d.File))
+
+	// Summary
+	b.WriteString("#### Summary:\n")
+	b.WriteString(fmt.Sprintf("- Headings added: %d\n", len(d.HeadingsAdded)))
+	b.WriteString(fmt.Sprintf("- Headings removed: %d\n", len(d.HeadingsRemoved)))
+	b.WriteString(fmt.Sprintf("- Links added: %d\n", len(d.LinksAdded)))
+	b.WriteString(fmt.Sprintf("- Links removed: %d\n", len(d.LinksRemoved)))
+	b.WriteString(fmt.Sprintf("- Images added: %d\n", len(d.ImagesAdded)))
+	b.WriteString(fmt.Sprintf("- Images removed: %d\n", len(d.ImagesRemoved)))
+	b.WriteString(fmt.Sprintf("- Sections changed: %d\n\n", len(d.SectionWordChange)))
+
+	// Headings
+	if len(d.HeadingsAdded) > 0 {
+		b.WriteString("#### Headings added:\n")
+		for _, h := range d.HeadingsAdded {
+			b.WriteString(fmt.Sprintf("- %s\n", h))
+		}
+		b.WriteString("\n")
+	}
+	if len(d.HeadingsRemoved) > 0 {
+		b.WriteString("#### Headings removed:\n")
+		for _, h := range d.HeadingsRemoved {
+			b.WriteString(fmt.Sprintf("- %s\n", h))
+		}
+		b.WriteString("\n")
+	}
+
+	// Links
+	if len(d.LinksAdded) > 0 {
+		b.WriteString("#### Links added:\n")
+		for _, l := range d.LinksAdded {
+			b.WriteString(fmt.Sprintf("- %s\n", l))
+		}
+		b.WriteString("\n")
+	}
+	if len(d.LinksRemoved) > 0 {
+		b.WriteString("#### Links removed:\n")
+		for _, l := range d.LinksRemoved {
+			b.WriteString(fmt.Sprintf("- %s\n", l))
+		}
+		b.WriteString("\n")
+	}
+
+	// Images
+	if len(d.ImagesAdded) > 0 {
+		b.WriteString("#### Images added:\n")
+		for _, img := range d.ImagesAdded {
+			b.WriteString(fmt.Sprintf("- %s\n", img))
+		}
+		b.WriteString("\n")
+	}
+	if len(d.ImagesRemoved) > 0 {
+		b.WriteString("#### Images removed:\n")
+		for _, img := range d.ImagesRemoved {
+			b.WriteString(fmt.Sprintf("- %s\n", img))
+		}
+		b.WriteString("\n")
+	}
+
+	// Section Word Count Changes -> use <details> for large ones
+	if len(d.SectionWordChange) > 0 {
+		b.WriteString(fmt.Sprintf("<details>\n<summary>Section Word Count Changes (%d changes)</summary>\n\n", len(d.SectionWordChange)))
+		for _, line := range d.SectionWordChange {
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+		b.WriteString("\n</details>\n\n")
+	}
+
+	return b.String()
+}
+
+func (d *DocDiff) StringV1() string {
+	var b bytes.Buffer
+
+	b.WriteString(fmt.Sprintf("### Doc File Changes: **`%s`**\n\n", d.File))
+
+	if len(d.HeadingsAdded) > 0 {
+		b.WriteString("#### Headings added:\n")
+		for _, h := range d.HeadingsAdded {
+			b.WriteString(fmt.Sprintf("- %s\n", h))
+		}
+		b.WriteString("\n")
+	}
+	if len(d.HeadingsRemoved) > 0 {
+		b.WriteString("#### Headings removed:\n")
+		for _, h := range d.HeadingsRemoved {
+			b.WriteString(fmt.Sprintf("- %s\n", h))
+		}
+		b.WriteString("\n")
+	}
+
+	if len(d.LinksAdded) > 0 {
+		b.WriteString("#### Links added:\n")
+		for _, l := range d.LinksAdded {
+			b.WriteString(fmt.Sprintf("- %s\n", l))
+		}
+		b.WriteString("\n")
+	}
+	if len(d.LinksRemoved) > 0 {
+		b.WriteString("#### Links removed:\n")
+		for _, l := range d.LinksRemoved {
+			b.WriteString(fmt.Sprintf("- %s\n", l))
+		}
+		b.WriteString("\n")
+	}
+
+	if len(d.ImagesAdded) > 0 {
+		b.WriteString("#### Images added:\n")
+		for _, img := range d.ImagesAdded {
+			b.WriteString(fmt.Sprintf("- %s\n", img))
+		}
+		b.WriteString("\n")
+	}
+	if len(d.ImagesRemoved) > 0 {
+		b.WriteString("#### Images removed:\n")
+		for _, img := range d.ImagesRemoved {
+			b.WriteString(fmt.Sprintf("- %s\n", img))
+		}
+		b.WriteString("\n")
+	}
+
+	if len(d.SectionWordChange) > 0 {
+		b.WriteString("#### Section Word Count Changes:\n")
+		for _, line := range d.SectionWordChange {
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+func DiffDocs(oldDir, newDir string) []DocDiff {
+	var diffs []DocDiff
 
 	files := collectMarkdownFiles(oldDir, newDir)
 
@@ -30,13 +194,38 @@ func DiffDocs(oldDir, newDir string) []string {
 		oldInfo := parseDoc(filepath.Join(oldDir, file))
 		newInfo := parseDoc(filepath.Join(newDir, file))
 
-		section := diffDoc(file, oldInfo, newInfo)
-		if section != "" {
-			diffs = append(diffs, section)
+		docDiff := computeDocDiff(file, oldInfo, newInfo)
+		if docDiff != nil {
+			diffs = append(diffs, *docDiff)
 		}
 	}
 
 	return diffs
+}
+
+func computeDocDiff(file string, oldInfo, newInfo *DocInfo) *DocDiff {
+	headingAdded, headingRemoved := diffSets(oldInfo.Headings, newInfo.Headings)
+	linksAdded, linksRemoved := diffSets(oldInfo.Links, newInfo.Links)
+	imagesAdded, imagesRemoved := diffSets(oldInfo.Images, newInfo.Images)
+	sectionWordDiff := diffSectionWordCounts(oldInfo.SectionWord, newInfo.SectionWord)
+
+	if len(headingAdded)+len(headingRemoved)+
+		len(linksAdded)+len(linksRemoved)+
+		len(imagesAdded)+len(imagesRemoved)+
+		len(sectionWordDiff) == 0 {
+		return nil
+	}
+
+	return &DocDiff{
+		File:              file,
+		HeadingsAdded:     headingAdded,
+		HeadingsRemoved:   headingRemoved,
+		LinksAdded:        linksAdded,
+		LinksRemoved:      linksRemoved,
+		ImagesAdded:       imagesAdded,
+		ImagesRemoved:     imagesRemoved,
+		SectionWordChange: sectionWordDiff,
+	}
 }
 
 func collectMarkdownFiles(oldDir, newDir string) []string {
@@ -44,7 +233,9 @@ func collectMarkdownFiles(oldDir, newDir string) []string {
 	var files []string
 
 	walk := func(base string) {
-		filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
+		// TODO: log error
+		//nolint:errcheck
+		_ = filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
@@ -64,8 +255,6 @@ func collectMarkdownFiles(oldDir, newDir string) []string {
 		})
 	}
 
-	walk(filepath.Join(oldDir, "docs"))
-	walk(filepath.Join(newDir, "docs"))
 	walk(oldDir)
 	walk(newDir)
 
@@ -73,25 +262,29 @@ func collectMarkdownFiles(oldDir, newDir string) []string {
 	return files
 }
 
-func parseDoc(path string) DocInfo {
+func parseDoc(path string) *DocInfo {
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return DocInfo{SectionWord: make(map[string]int)}
+		return &DocInfo{SectionWord: make(map[string]int)}
 	}
 
 	md := goldmark.New()
 	doc := md.Parser().Parse(text.NewReader(content))
 
-	info := DocInfo{
+	info := &DocInfo{
 		SectionWord: make(map[string]int),
 	}
 
 	currentHeading := "Document Root"
 
-	ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+	// TODO: log error
+	//nolint:errcheck
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
 			switch n := n.(type) {
 			case *ast.Heading:
+				// TODO: update
+				//nolint:staticcheck
 				headingText := string(n.Text(content))
 				info.Headings = append(info.Headings, headingText)
 				currentHeading = headingText
@@ -102,6 +295,8 @@ func parseDoc(path string) DocInfo {
 				dest := string(n.Destination)
 				info.Images = append(info.Images, dest)
 			case *ast.Text:
+				// TODO: update
+				//nolint:staticcheck
 				words := countWords(string(n.Text(content)))
 				info.SectionWord[currentHeading] += words
 			}
@@ -112,84 +307,9 @@ func parseDoc(path string) DocInfo {
 	return info
 }
 
-func countWords(text string) int {
-	fields := strings.Fields(text)
+func countWords(txt string) int {
+	fields := strings.Fields(txt)
 	return len(fields)
-}
-
-func diffDoc(file string, oldInfo, newInfo DocInfo) string {
-	var b bytes.Buffer
-
-	headingAdded, headingRemoved := diffSets(oldInfo.Headings, newInfo.Headings)
-	linksAdded, linksRemoved := diffSets(oldInfo.Links, newInfo.Links)
-	imagesAdded, imagesRemoved := diffSets(oldInfo.Images, newInfo.Images)
-
-	sectionWordDiff := diffSectionWordCounts(oldInfo.SectionWord, newInfo.SectionWord)
-
-	if len(headingAdded)+len(headingRemoved)+
-		len(linksAdded)+len(linksRemoved)+
-		len(imagesAdded)+len(imagesRemoved)+
-		len(sectionWordDiff) == 0 {
-		return ""
-	}
-
-	b.WriteString(fmt.Sprintf("## Documentation Changes: `%s`\n\n", file))
-
-	if len(headingAdded) > 0 {
-		b.WriteString("### Headings added:\n")
-		for _, h := range headingAdded {
-			b.WriteString(fmt.Sprintf("- %s\n", h))
-		}
-		b.WriteString("\n")
-	}
-	if len(headingRemoved) > 0 {
-		b.WriteString("### Headings removed:\n")
-		for _, h := range headingRemoved {
-			b.WriteString(fmt.Sprintf("- %s\n", h))
-		}
-		b.WriteString("\n")
-	}
-
-	if len(linksAdded) > 0 {
-		b.WriteString("### Links added:\n")
-		for _, l := range linksAdded {
-			b.WriteString(fmt.Sprintf("- %s\n", l))
-		}
-		b.WriteString("\n")
-	}
-	if len(linksRemoved) > 0 {
-		b.WriteString("### Links removed:\n")
-		for _, l := range linksRemoved {
-			b.WriteString(fmt.Sprintf("- %s\n", l))
-		}
-		b.WriteString("\n")
-	}
-
-	if len(imagesAdded) > 0 {
-		b.WriteString("### Images added:\n")
-		for _, img := range imagesAdded {
-			b.WriteString(fmt.Sprintf("- %s\n", img))
-		}
-		b.WriteString("\n")
-	}
-	if len(imagesRemoved) > 0 {
-		b.WriteString("### Images removed:\n")
-		for _, img := range imagesRemoved {
-			b.WriteString(fmt.Sprintf("- %s\n", img))
-		}
-		b.WriteString("\n")
-	}
-
-	if len(sectionWordDiff) > 0 {
-		b.WriteString("### Section Word Count Changes:\n")
-		for _, line := range sectionWordDiff {
-			b.WriteString(line)
-			b.WriteString("\n")
-		}
-		b.WriteString("\n")
-	}
-
-	return b.String()
 }
 
 func diffSets(oldList, newList []string) (added, removed []string) {
@@ -224,7 +344,6 @@ func diffSectionWordCounts(oldCounts, newCounts map[string]int) []string {
 	var lines []string
 	seen := make(map[string]bool)
 
-	// Check old sections
 	for sec, oldCount := range oldCounts {
 		newCount, exists := newCounts[sec]
 		seen[sec] = true
@@ -235,7 +354,6 @@ func diffSectionWordCounts(oldCounts, newCounts map[string]int) []string {
 		}
 	}
 
-	// Check new sections
 	for sec, newCount := range newCounts {
 		if !seen[sec] {
 			lines = append(lines, fmt.Sprintf("- Section `%s`: ADDED (%d words)", sec, newCount))

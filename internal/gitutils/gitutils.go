@@ -1,29 +1,31 @@
 package gitutils
 
 import (
+	"io"
 	"log"
 	"os"
 	"os/exec"
 )
 
-func CheckoutWorktree(ref string) string {
+func CheckoutWorktree(repoDir, ref string) string {
 	tmpDir, err := os.MkdirTemp("", "apidiff-"+ref)
 	if err != nil {
 		log.Fatal(err)
 	}
-	run("git", "worktree", "add", "--detach", tmpDir, ref)
+	runGitInDir(repoDir, "worktree", "add", "--detach", tmpDir, ref)
 	return tmpDir
 }
 
-func CleanupWorktree(path string) {
-	run("git", "worktree", "remove", "--force", path)
+func CleanupWorktree(repoDir, path string) {
+	runGitInDir(repoDir, "worktree", "remove", "--force", path)
 }
 
-func run(name string, args ...string) {
-	cmd := exec.Command(name, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+func runGitInDir(dir string, args ...string) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("git %v failed: %v", args, err)
 	}
 }

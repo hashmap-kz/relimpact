@@ -1,6 +1,6 @@
 # relimpact
 
-**Release Impact Analyzer for Go projects - API Diff, Docs Diff & more**
+**Release Impact Analyzer for Go projects - catch breaking API changes, docs updates & important file diffs - fast.**
 
 [![License](https://img.shields.io/github/license/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/blob/master/LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/hashmap-kz/relimpact)](https://goreportcard.com/report/github.com/hashmap-kz/relimpact)
@@ -12,18 +12,20 @@
 
 ---
 
-- **API Diff** - track public API changes (structs, interfaces, functions, constants, variables) to catch breaking
-  changes before they reach your users
-- **Docs Diff** - section-aware, heading-aware, word count diff for Markdown docs to highlight meaningful content
-  changes, not noisy line diffs
-- **Other Files Diff** - group changes by extension (.sh, .sql, .json, etc.) to catch important migrations, scripts, and
-  auxiliary file updates
-- **Perfect for Release PR reviews** - helps reviewers see the real impact of each change at a glance
-- **Human-friendly Release Reports in Markdown** - designed to be copy-pasted into GitHub Releases, Slack, or changelogs
-- **Works great in GitHub Actions, GitLab CI, and locally** - easily integrates into your CI pipelines or local release
-  process
-- **Zero server required** - pure CLI tool - no services to deploy or manage, works entirely from your Git repo and your
-  terminal
+## Features
+
+- **API Diff** – Track breaking public API changes (structs, interfaces, functions, constants, variables) to prevent
+  surprises for your users.
+- **Docs Diff** – Section-aware, heading-aware Markdown diff to highlight meaningful content changes, not noisy line
+  diffs.
+- **Other Files Diff** – Group file changes by extension (.sh, .sql, .json, etc.) to surface important migrations,
+  scripts, and auxiliary file updates.
+- **Designed for Release PR reviews** – Helps reviewers quickly see the real impact of changes at a glance.
+- **Human-friendly Markdown Reports** – Ready to paste into GitHub Releases, Slack, or changelogs.
+- **Works in GitHub Actions, GitLab CI, or locally** – Integrates easily into your CI pipelines or local release
+  process.
+- **No server required** – Pure CLI tool. No services to deploy or manage - works entirely from your Git repo and
+  terminal.
 
 ---
 
@@ -32,39 +34,155 @@
 ### Run on a GitHub PR:
 
 ```bash
-relimpact --old v1.0.0 --new HEAD --output release-impact.md
+relimpact --old=v1.0.0 --new=HEAD > release-impact.md
 ```
 
 ### Example Output
 
 ```markdown
-## API Diff
+---
+## API Changes
 
-- Added Funcs in `pkg/mymodule`: `NewClient(config.Config) -> (*Client, error)`
-- Method `DoSomething` in `pkg/mymodule.Client` changed signature: `(ctx context.Context) -> (error)`
-- Removed Method `DeprecatedThing` from `pkg/mymodule.Client`: `() -> (string)`
+### Summary
 
-## Documentation Changes: `README.md`
+| Kind of Change  | Count |
+|-----------------|-------|
+| Packages Added  | 0     |
+| Packages Removed| 0     |
+| Funcs Added     | 1     |
+| Funcs Removed   | 1     |
+| Consts Added    | 2     |
+| Consts Removed  | 0     |
+| Types Added     | 1     |
+| Types Removed   | 1     |
+| Fields Added    | 1     |
+| Fields Removed  | 1     |
+| Methods Added   | 1     |
+| Methods Removed | 1     |
 
-### Headings added:
+### Package Changes
+
+#### Package `pkg/mymodule`
+
+- Added Funcs:
+    - NewClient(config.Config) -> (*Client, error)
+- Removed Funcs:
+    - DeprecatedThing() -> (string)
+- Added Consts:
+    - DefaultTimeout time.Duration
+    - MaxRetries int
+- Added Types:
+    - ClientOptions
+- Removed Types:
+    - LegacyClient
+- Added Fields:
+    - Type `ClientOptions` Fields:
+        - EnableCache bool
+- Removed Fields:
+    - Type `LegacyClient` Fields:
+        - OldModeEnabled bool
+- Added Methods:
+    - Client.DoSomething(ctx context.Context) -> error
+- Removed Methods:
+    - Client.DoSomethingOld() -> bool
+
+---
+## Documentation Changes
+
+### Doc File: `README.md`
+
+#### Summary:
+- Headings added: 1
+- Headings removed: 0
+- Links added: 1
+- Links removed: 0
+- Images added: 0
+- Images removed: 0
+- Sections changed: 3
+
+#### Headings added:
 - Advanced Usage
 
-### Section Word Count Changes:
+#### Links added:
+- https://pkg.go.dev/github.com/example/project
+
+<details>
+<summary>Section Word Count Changes (3 changes)</summary>
+
 - Section `Quick Start`: 142 -> 155 words
 - Section `Deprecated Options`: REMOVED (45 words)
 - Section `New Features`: ADDED (67 words)
 
+</details>
+
+---
 ## Other Files Changes
 
-### .sql
+### `.sql`
 
 - Added:
     - migrations/20240608_add_user_table.sql
+- Removed:
+    - migrations/20240501_drop_old_index.sql
 
-### .sh
+### `.sh`
 
 - Modified:
     - scripts/deploy.sh
+```
+
+**See also [docs](./docs) for more examples.**
+
+--- 
+
+## GitHub Action
+
+```yaml
+name: Release Impact on PR
+
+on:
+  pull_request:
+    branches: [ master ]
+    types: [opened, synchronize, reopened]
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release-impact:
+    name: Generate Release Impact Report
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine previous tag
+        id: prevtag
+        run: |
+          git fetch --tags
+          PREV_TAG=$(git tag --sort=-version:refname | head -n2 | tail -n1)
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      - uses: hashmap-kz/relimpact-action@v1
+        with:
+          old-ref: ${{ steps.prevtag.outputs.prev_tag }}
+          new-ref: HEAD
+          output: release-impact.md
+
+      - name: Upload Release Impact Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-impact
+          path: release-impact.md
+
+      - name: Post to PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
+          path: release-impact.md
 ```
 
 ---
@@ -116,7 +234,7 @@ curl -LO https://github.com/hashmap-kz/relimpact/releases/latest/download/relimp
 sudo dpkg -i relimpact_linux_amd64.deb
 ```
 
-#### Apline Linux
+#### Alpine Linux
 
 ```bash
 apk update && apk add --no-cache bash curl
@@ -178,7 +296,6 @@ apk add relimpact_linux_amd64.apk --allow-untrusted
 - Built on top of **Git diff**:
     - Uses `git diff --name-status` under the hood.
     - Groups files per extension -> clean, easy to review.
-
 
 ---
 

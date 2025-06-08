@@ -10,19 +10,57 @@ import (
 	"strings"
 )
 
-// DiffOtherFiles generates a Markdown section with Other Files Changes.
-// includeExts -> which extensions to include (e.g. .sh, .sql, .yaml, .json, .conf, etc)
-func DiffOtherFiles(oldRef, newRef string, includeExts []string) string {
-	changes := collectOtherFileChanges(oldRef, newRef, includeExts)
-	if len(changes) == 0 {
+type OtherFileDiff struct {
+	Ext      string
+	Added    []string
+	Modified []string
+	Removed  []string
+	Other    []string
+}
+
+type OtherFilesDiffSummary struct {
+	Diffs []OtherFileDiff
+}
+
+func (s *OtherFilesDiffSummary) String() string {
+	if len(s.Diffs) == 0 {
 		return ""
 	}
 
 	var b bytes.Buffer
-	b.WriteString("### Other Files Changes\n\n")
+	b.WriteString("\n---\n## Other Files Changes\n\n")
+
+	for _, d := range s.Diffs {
+		b.WriteString(fmt.Sprintf("### `%s`\n\n", d.Ext))
+
+		writeSection := func(label string, files []string) {
+			if len(files) == 0 {
+				return
+			}
+			b.WriteString(fmt.Sprintf("- %s:\n", label))
+			sort.Strings(files)
+			for _, f := range files {
+				b.WriteString(fmt.Sprintf("  - %s\n", f))
+			}
+			b.WriteString("\n")
+		}
+
+		writeSection("Added", d.Added)
+		writeSection("Modified", d.Modified)
+		writeSection("Removed", d.Removed)
+		writeSection("Other", d.Other)
+	}
+
+	return b.String()
+}
+
+func DiffOther(workDir, oldRef, newRef string, includeExts []string) *OtherFilesDiffSummary {
+	changes := collectOtherFileChanges(workDir, oldRef, newRef, includeExts)
+
+	var summary OtherFilesDiffSummary
 
 	// Sorted extensions
-	var exts []string
+	exts := make([]string, 0, len(changes))
 	for ext := range changes {
 		exts = append(exts, ext)
 	}
@@ -30,31 +68,32 @@ func DiffOtherFiles(oldRef, newRef string, includeExts []string) string {
 
 	for _, ext := range exts {
 		actions := changes[ext]
-		b.WriteString(fmt.Sprintf("#### %s\n\n", ext))
+		diff := OtherFileDiff{Ext: ext}
 
-		// Sorted actions
-		actionOrder := []string{"Added", "Modified", "Removed", "Other"}
-		for _, action := range actionOrder {
-			files, ok := actions[action]
-			if !ok || len(files) == 0 {
-				continue
-			}
-			sort.Strings(files)
-			b.WriteString(fmt.Sprintf("- %s:\n", action))
-			for _, f := range files {
-				b.WriteString(fmt.Sprintf("  - %s\n", f))
-			}
-			b.WriteString("\n")
+		if files, ok := actions["Added"]; ok {
+			diff.Added = append(diff.Added, files...)
 		}
+		if files, ok := actions["Modified"]; ok {
+			diff.Modified = append(diff.Modified, files...)
+		}
+		if files, ok := actions["Removed"]; ok {
+			diff.Removed = append(diff.Removed, files...)
+		}
+		if files, ok := actions["Other"]; ok {
+			diff.Other = append(diff.Other, files...)
+		}
+
+		summary.Diffs = append(summary.Diffs, diff)
 	}
 
-	return b.String()
+	return &summary
 }
 
-func collectOtherFileChanges(oldRef, newRef string, includeExts []string) map[string]map[string][]string {
+func collectOtherFileChanges(workDir, oldRef, newRef string, includeExts []string) map[string]map[string][]string {
 	changes := make(map[string]map[string][]string)
 
 	cmd := exec.Command("git", "diff", "--name-status", oldRef, newRef)
+	cmd.Dir = workDir
 	out, err := cmd.Output()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "git diff failed: %v\n", err)
