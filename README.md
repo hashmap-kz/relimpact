@@ -40,30 +40,33 @@ relimpact --old v1.0.0 --new HEAD --output release-impact.md
 ### Example Output
 
 ```markdown
+---
 ## API Diff
 
 - Added Funcs in `pkg/mymodule`: `NewClient(config.Config) -> (*Client, error)`
 - Method `DoSomething` in `pkg/mymodule.Client` changed signature: `(ctx context.Context) -> (error)`
 - Removed Method `DeprecatedThing` from `pkg/mymodule.Client`: `() -> (string)`
 
+---
 ## Documentation Changes: `README.md`
 
 ### Headings added:
-
 - Advanced Usage
 
 ### Section Word Count Changes:
-
 - Section `Quick Start`: 142 -> 155 words
 - Section `Deprecated Options`: REMOVED (45 words)
 - Section `New Features`: ADDED (67 words)
 
+---
 ## Other Files Changes
 
 ### .sql
 
 - Added:
     - migrations/20240608_add_user_table.sql
+- Removed:
+    - migrations/20240501_drop_old_index.sql
 
 ### .sh
 
