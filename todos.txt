@@ -1,0 +1,3 @@
+* goroutines for checkout old/new
+* goroutines for diffs
+
