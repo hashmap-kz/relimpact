@@ -40,7 +40,6 @@ func TestCheckoutAndCleanupWorktree(t *testing.T) {
 	require.NoError(t, os.Chdir(tmpDir))
 
 	worktreeDir := CheckoutWorktree(tmpDir, "v1")
-	// t.Logf("Worktree dir: %s", worktreeDir)
 
 	// Verify worktree dir exists and contains file.txt
 	_, err = os.Stat(filepath.Join(worktreeDir, "file.txt"))

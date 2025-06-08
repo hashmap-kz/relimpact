@@ -71,7 +71,6 @@ This is v2.
 	// CreateChangelog
 	changelog := CreateChangelog(tmpDir, "v1", "HEAD")
 
-	// t.Logf("Changelog:\n%s", changelog)
 	assert.Contains(t, changelog, "Bar()")
 	assert.Contains(t, changelog, "New Section")
 	assert.Contains(t, changelog, "config.yaml")
