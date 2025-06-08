@@ -145,6 +145,6 @@ func Bar() {}
 	}
 	require.True(t, foundBar, "expected Bar() to be reported as added")
 
-	// Optional: print diff for debug
+	// print diff for debug
 	t.Logf("API Diff:\n%s", apiDiff.String())
 }

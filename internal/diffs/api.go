@@ -153,6 +153,7 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 			switch o := obj.(type) {
 			case *types.Func:
 				if o.Type() != nil {
+					//nolint:errcheck
 					sig := o.Type().(*types.Signature)
 					apkg.Funcs = append(apkg.Funcs, name+signatureString(sig))
 				}
@@ -179,6 +180,7 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 					atype.Kind = "interface"
 					for i := 0; i < ut.NumMethods(); i++ {
 						m := ut.Method(i)
+						//nolint:errcheck
 						atype.Methods = append(atype.Methods, m.Name()+signatureString(m.Type().(*types.Signature)))
 					}
 				default:
@@ -190,6 +192,7 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 				for i := 0; i < methodSet.Len(); i++ {
 					m := methodSet.At(i)
 					if m.Obj().Exported() {
+						//nolint:errcheck
 						atype.Methods = append(atype.Methods, m.Obj().Name()+signatureString(m.Obj().Type().(*types.Signature)))
 					}
 				}

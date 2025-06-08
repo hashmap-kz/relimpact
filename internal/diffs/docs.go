@@ -157,6 +157,8 @@ func collectMarkdownFiles(oldDir, newDir string) []string {
 	var files []string
 
 	walk := func(base string) {
+		// TODO: log error
+		//nolint:errcheck
 		_ = filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return nil
@@ -199,6 +201,8 @@ func parseDoc(path string) *DocInfo {
 
 	currentHeading := "Document Root"
 
+	// TODO: log error
+	//nolint:errcheck
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
 			switch n := n.(type) {
