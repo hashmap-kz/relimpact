@@ -109,9 +109,8 @@ func runDiffs(
 	docsDiffCh := make(chan string, 1)
 	otherDiffCh := make(chan string, 1)
 
-	wgDiffs.Add(3)
-
 	// API diff
+	wgDiffs.Add(1)
 	go func() {
 		defer wgDiffs.Done()
 		apiDiffResult := diffs.DiffAPI(oldAPI, newAPI)
@@ -119,6 +118,7 @@ func runDiffs(
 	}()
 
 	// Docs diff
+	wgDiffs.Add(1)
 	go func() {
 		defer wgDiffs.Done()
 		docsDiffs := diffs.DiffDocs(tmpOld, tmpNew)
@@ -126,6 +126,7 @@ func runDiffs(
 	}()
 
 	// Other files diff
+	wgDiffs.Add(1)
 	go func() {
 		defer wgDiffs.Done()
 		otherSection := diffs.DiffOther(repoDir, oldRef, newRef, includeExts)
