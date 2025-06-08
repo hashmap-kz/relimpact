@@ -56,6 +56,70 @@ func (d *APIDiff) String() string {
 	var sb strings.Builder
 	sb.WriteString("\n---\n## API Changes\n")
 
+	writeSectionSimple := func(prefix string, packages []string) {
+		for _, pkg := range packages {
+			sb.WriteString("- ")
+			sb.WriteString(prefix)
+			sb.WriteString(" `")
+			sb.WriteString(pkg)
+			sb.WriteString("`\n")
+		}
+	}
+
+	// Packages added/removed
+	writeSectionSimple("Added Package", d.PackagesAdded)
+	writeSectionSimple("Removed Package", d.PackagesRemoved)
+
+	// Group APIDiffRes items by package and label
+	groupAndWrite := func(title string, items []APIDiffRes) {
+		if len(items) == 0 {
+			return
+		}
+
+		// Map: pkg -> label -> list of X
+		group := make(map[string]map[string][]string)
+
+		for _, res := range items {
+			if _, ok := group[res.Path]; !ok {
+				group[res.Path] = make(map[string][]string)
+			}
+			group[res.Path][res.Label] = append(group[res.Path][res.Label], res.X)
+		}
+
+		// Now print per package
+		sb.WriteString(fmt.Sprintf("\n### %s\n", title))
+		for pkgPath, labels := range group {
+			sb.WriteString(fmt.Sprintf("\n#### Package `%s`\n", pkgPath))
+			for label, xs := range labels {
+				sb.WriteString(fmt.Sprintf("- %s:\n", label))
+				for _, x := range xs {
+					sb.WriteString(fmt.Sprintf("    - %s\n", x))
+				}
+			}
+		}
+	}
+
+	// Now print all sections using this grouping
+	groupAndWrite("Funcs Added", d.FuncsAdded)
+	groupAndWrite("Funcs Removed", d.FuncsRemoved)
+	groupAndWrite("Vars Added", d.VarsAdded)
+	groupAndWrite("Vars Removed", d.VarsRemoved)
+	groupAndWrite("Consts Added", d.ConstsAdded)
+	groupAndWrite("Consts Removed", d.ConstsRemoved)
+	groupAndWrite("Types Added", d.TypesAdded)
+	groupAndWrite("Types Removed", d.TypesRemoved)
+	groupAndWrite("Fields Added", d.FieldsAdded)
+	groupAndWrite("Fields Removed", d.FieldsRemoved)
+	groupAndWrite("Methods Added", d.MethodsAdded)
+	groupAndWrite("Methods Removed", d.MethodsRemoved)
+
+	return sb.String()
+}
+
+func (d *APIDiff) StringV1() string {
+	var sb strings.Builder
+	sb.WriteString("\n---\n## API Changes\n")
+
 	writeSection := func(prefix string, items []APIDiffRes) {
 		for _, res := range items {
 			sb.WriteString("- ")
