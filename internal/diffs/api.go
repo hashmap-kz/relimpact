@@ -54,7 +54,7 @@ type APIDiff struct {
 
 func (d *APIDiff) String() string {
 	var sb strings.Builder
-	sb.WriteString("## API Diff\n")
+	sb.WriteString("## API Changes\n")
 
 	writeSection := func(prefix string, items []APIDiffRes) {
 		for _, res := range items {

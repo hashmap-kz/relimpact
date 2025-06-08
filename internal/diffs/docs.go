@@ -32,20 +32,35 @@ type DocDiff struct {
 	SectionWordChange []string // lines like "- Section `X`: 12 -> 34 words"
 }
 
+func FormatAllDocDiffs(diffs []DocDiff) string {
+	if len(diffs) == 0 {
+		return ""
+	}
+
+	var b bytes.Buffer
+	b.WriteString("## Documentation Changes\n\n")
+
+	for _, d := range diffs {
+		b.WriteString(d.String())
+	}
+
+	return b.String()
+}
+
 func (d *DocDiff) String() string {
 	var b bytes.Buffer
 
-	b.WriteString(fmt.Sprintf("## Documentation Changes: `%s`\n\n", d.File))
+	b.WriteString(fmt.Sprintf("### Doc File Changes: **`%s`**\n\n", d.File))
 
 	if len(d.HeadingsAdded) > 0 {
-		b.WriteString("### Headings added:\n")
+		b.WriteString("#### Headings added:\n")
 		for _, h := range d.HeadingsAdded {
 			b.WriteString(fmt.Sprintf("- %s\n", h))
 		}
 		b.WriteString("\n")
 	}
 	if len(d.HeadingsRemoved) > 0 {
-		b.WriteString("### Headings removed:\n")
+		b.WriteString("#### Headings removed:\n")
 		for _, h := range d.HeadingsRemoved {
 			b.WriteString(fmt.Sprintf("- %s\n", h))
 		}
@@ -53,14 +68,14 @@ func (d *DocDiff) String() string {
 	}
 
 	if len(d.LinksAdded) > 0 {
-		b.WriteString("### Links added:\n")
+		b.WriteString("#### Links added:\n")
 		for _, l := range d.LinksAdded {
 			b.WriteString(fmt.Sprintf("- %s\n", l))
 		}
 		b.WriteString("\n")
 	}
 	if len(d.LinksRemoved) > 0 {
-		b.WriteString("### Links removed:\n")
+		b.WriteString("#### Links removed:\n")
 		for _, l := range d.LinksRemoved {
 			b.WriteString(fmt.Sprintf("- %s\n", l))
 		}
@@ -68,14 +83,14 @@ func (d *DocDiff) String() string {
 	}
 
 	if len(d.ImagesAdded) > 0 {
-		b.WriteString("### Images added:\n")
+		b.WriteString("#### Images added:\n")
 		for _, img := range d.ImagesAdded {
 			b.WriteString(fmt.Sprintf("- %s\n", img))
 		}
 		b.WriteString("\n")
 	}
 	if len(d.ImagesRemoved) > 0 {
-		b.WriteString("### Images removed:\n")
+		b.WriteString("#### Images removed:\n")
 		for _, img := range d.ImagesRemoved {
 			b.WriteString(fmt.Sprintf("- %s\n", img))
 		}
@@ -83,7 +98,7 @@ func (d *DocDiff) String() string {
 	}
 
 	if len(d.SectionWordChange) > 0 {
-		b.WriteString("### Section Word Count Changes:\n")
+		b.WriteString("#### Section Word Count Changes:\n")
 		for _, line := range d.SectionWordChange {
 			b.WriteString(line)
 			b.WriteString("\n")

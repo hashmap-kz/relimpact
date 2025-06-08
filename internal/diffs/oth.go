@@ -28,10 +28,10 @@ func (s *OtherFilesDiffSummary) String() string {
 	}
 
 	var b bytes.Buffer
-	b.WriteString("### Other Files Changes\n\n")
+	b.WriteString("## Other Files Changes\n\n")
 
 	for _, d := range s.Diffs {
-		b.WriteString(fmt.Sprintf("#### %s\n\n", d.Ext))
+		b.WriteString(fmt.Sprintf("### `%s`\n\n", d.Ext))
 
 		writeSection := func(label string, files []string) {
 			if len(files) == 0 {
@@ -60,7 +60,7 @@ func DiffOtherFilesStruct(oldRef, newRef string, includeExts []string) *OtherFil
 	var summary OtherFilesDiffSummary
 
 	// Sorted extensions
-	var exts = make([]string, 0, len(changes))
+	exts := make([]string, 0, len(changes))
 	for ext := range changes {
 		exts = append(exts, ext)
 	}

@@ -33,9 +33,7 @@ func main() {
 
 	// docs
 	docsDiffs := diffs.DiffDocs(tmpOld, tmpNew)
-	for i := range docsDiffs {
-		fmt.Println(docsDiffs[i].String())
-	}
+	fmt.Println(diffs.FormatAllDocDiffs(docsDiffs))
 
 	// others
 	// TODO: configurable
