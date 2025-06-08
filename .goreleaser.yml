@@ -1,0 +1,116 @@
+version: 2
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: relimpact
+    binary: relimpact
+    ldflags:
+      - -s -w
+      - -X 'github.com/hashmap-kz/relimpact/internal/version.Version={{.Version}}'
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+checksum:
+  name_template: checksums.txt
+
+archives:
+  - builds:
+      - relimpact
+    name_template: "{{ .ProjectName }}_{{ .Tag }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    wrap_in_directory: "false"
+    formats: [ "tar.gz" ]
+    files:
+      - LICENSE
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^test:"
+      - "^test\\("
+      - "merge conflict"
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+      - go mod tidy
+  groups:
+    - title: Dependency updates
+      regexp: '^.*?(.+)\(deps\)!?:.+$'
+      order: 300
+    - title: "New Features"
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 100
+    - title: "Security updates"
+      regexp: '^.*?sec(\(.+\))??!?:.+$'
+      order: 150
+    - title: "Bug fixes"
+      regexp: '^.*?(fix|refactor)(\(.+\))??!?:.+$'
+      order: 200
+    - title: "Documentation updates"
+      regexp: ^.*?docs?(\(.+\))??!?:.+$
+      order: 400
+    - title: "Build process updates"
+      regexp: ^.*?(build|ci)(\(.+\))??!?:.+$
+      order: 400
+    - title: Other work
+      order: 9999
+
+nfpms:
+  - file_name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    maintainer: alexey.zh
+    homepage: "https://github.com/hashmap-kz/relimpact"
+    description: "Release Impact Analyzer for Go projects"
+    license: "Apache-2.0"
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    section: utils
+    contents:
+      - src: ./LICENSE
+        dst: /usr/share/doc/relimpact/copyright
+        file_info:
+          mode: 0644
+
+dockers:
+  - image_templates:
+      - "quay.io/hashmap_kz/relimpact:{{ .Version }}-amd64"
+    dockerfile: Dockerfile
+    extra_files:
+      - go.mod
+      - go.sum
+      - main.go
+      - internal/
+    build_flag_templates:
+      - "--label=io.artifacthub.package.readme-url=https://raw.githubusercontent.com/hashmap-kz/relimpact/master/README.md"
+      - '--label=io.artifacthub.package.maintainers=[{"name":"alexey.zh","email":"mailbox.stdio@gmail.com"}]'
+      - "--label=io.artifacthub.package.license=MIT"
+      - "--label=org.opencontainers.image.description=Release Impact Analyzer for Go projects"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.name={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--platform=linux/amd64"
+
+docker_manifests:
+  - name_template: "quay.io/hashmap_kz/relimpact:{{ .Version }}"
+    image_templates:
+      - "quay.io/hashmap_kz/relimpact:{{ .Version }}-amd64"
+  - name_template: "quay.io/hashmap_kz/relimpact:latest"
+    image_templates:
+      - "quay.io/hashmap_kz/relimpact:{{ .Version }}-amd64"
