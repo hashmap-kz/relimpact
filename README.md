@@ -74,6 +74,47 @@ relimpact --old v1.0.0 --new HEAD --output release-impact.md
     - scripts/deploy.sh
 ```
 
+--- 
+
+## GitHub Action
+
+```yaml
+name: Release Impact on PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  release-impact:
+    name: Generate Release Impact Report
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine previous tag
+        id: prevtag
+        run: |
+          git fetch --tags
+          PREV_TAG=$(git tag --sort=-version:refname | head -n2 | tail -n1)
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      - uses: hashmap-kz/relimpact-action@v1
+        with:
+          old_ref: ${{ steps.prevtag.outputs.prev_tag }}
+          new_ref: HEAD
+          output: release-impact.md
+
+      - name: Upload Release Impact Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-impact
+          path: release-impact.md
+```
+
 ---
 
 ## Installation
