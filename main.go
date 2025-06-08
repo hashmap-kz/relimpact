@@ -14,7 +14,7 @@ func main() {
 	flag.Parse()
 
 	if *oldRef == "" || *newRef == "" {
-		log.Fatal("Usage: apidiff --old <ref> --new <ref>")
+		log.Fatal("Usage: relimpact --old <ref> --new <ref>")
 	}
 
 	fmt.Println(cmd.CreateChangelog(".", *oldRef, *newRef))
