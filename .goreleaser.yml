@@ -73,7 +73,7 @@ nfpms:
     maintainer: alexey.zh
     homepage: "https://github.com/hashmap-kz/relimpact"
     description: "Release Impact Analyzer for Go projects"
-    license: "Apache-2.0"
+    license: "MIT"
     formats:
       - deb
       - rpm
