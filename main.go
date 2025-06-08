@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"os"
 
 	"github.com/hashmap-kz/relimpact/cmd"
 )
@@ -15,7 +15,8 @@ func main() {
 	flag.Parse()
 
 	if *oldRef == "" || *newRef == "" {
-		log.Fatal("Usage: relimpact --old <ref> --new <ref>")
+		_, _ = fmt.Fprintf(os.Stderr, "Usage: relimpact --old <ref> --new <ref>")
+		os.Exit(1)
 	}
 
 	if *greedy {
