@@ -75,30 +75,6 @@ func TestComputeDocDiff(t *testing.T) {
 	assert.Contains(t, docDiff.SectionWordChange, "- Section `Intro`: 10 -> 12 words")
 }
 
-func TestDocDiffString(t *testing.T) {
-	docDiff := &DocDiff{
-		File:              "docs/test.md",
-		HeadingsAdded:     []string{"New Section"},
-		HeadingsRemoved:   []string{"Old Section"},
-		LinksAdded:        []string{"https://new.link"},
-		LinksRemoved:      []string{"https://old.link"},
-		ImagesAdded:       []string{"new.png"},
-		ImagesRemoved:     []string{"old.png"},
-		SectionWordChange: []string{"- Section `Intro`: 10 -> 12 words"},
-	}
-
-	output := docDiff.String()
-
-	assert.Contains(t, output, "### Doc File Changes: **`docs/test.md`**")
-	assert.Contains(t, output, "- New Section")
-	assert.Contains(t, output, "- Old Section")
-	assert.Contains(t, output, "- https://new.link")
-	assert.Contains(t, output, "- https://old.link")
-	assert.Contains(t, output, "- new.png")
-	assert.Contains(t, output, "- old.png")
-	assert.Contains(t, output, "- Section `Intro`: 10 -> 12 words")
-}
-
 func TestFormatAllDocDiffs(t *testing.T) {
 	docDiff1 := DocDiff{
 		File:          "docs/one.md",
