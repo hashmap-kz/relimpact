@@ -25,9 +25,17 @@ func TestCheckoutAndCleanupWorktree(t *testing.T) {
 
 	// Checkout worktree at v1
 	oldCwd, _ := os.Getwd()
-	defer os.Chdir(oldCwd) // ensure we restore working dir
 
-	os.Chdir(tmpDir) // git worktree must be run inside repo!
+	// restore working dir
+	defer func(dir string) {
+		err := os.Chdir(dir)
+		if err != nil {
+			t.Log("cannot restore chdir")
+		}
+	}(oldCwd)
+
+	// git worktree must be run inside repo!
+	require.NoError(t, os.Chdir(tmpDir))
 
 	worktreeDir := CheckoutWorktree("v1")
 	t.Logf("Worktree dir: %s", worktreeDir)
