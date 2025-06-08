@@ -13,7 +13,7 @@ import (
 
 func TestCreateChangelog_IntegrationTempGit(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Log(tmpDir)
+	// t.Log(tmpDir)
 
 	// Init git repo
 	testutils.RunGit(t, tmpDir, "init")
@@ -71,7 +71,7 @@ This is v2.
 	// CreateChangelog
 	changelog := CreateChangelog(tmpDir, "v1", "HEAD")
 
-	t.Logf("Changelog:\n%s", changelog)
+	// t.Logf("Changelog:\n%s", changelog)
 	assert.Contains(t, changelog, "Bar()")
 	assert.Contains(t, changelog, "New Section")
 	assert.Contains(t, changelog, "config.yaml")

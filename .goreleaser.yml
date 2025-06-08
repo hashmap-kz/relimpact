@@ -112,6 +112,7 @@ dockers:
       - go.sum
       - main.go
       - internal/
+      - cmd/
     build_flag_templates:
       - "--label=io.artifacthub.package.readme-url=https://raw.githubusercontent.com/hashmap-kz/relimpact/master/README.md"
       - '--label=io.artifacthub.package.maintainers=[{"name":"alexey.zh","email":"mailbox.stdio@gmail.com"}]'

@@ -93,7 +93,7 @@ func TestDiffAPI(t *testing.T) {
 
 func TestAPIDiff_IntegrationTempGit(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Log(tmpDir)
+	// t.Log(tmpDir)
 
 	// Init git repo
 	testutils.RunGit(t, tmpDir, "init")
@@ -146,5 +146,5 @@ func Bar() {}
 	require.True(t, foundBar, "expected Bar() to be reported as added")
 
 	// print diff for debug
-	t.Logf("API Diff:\n%s", apiDiff.String())
+	// t.Logf("API Diff:\n%s", apiDiff.String())
 }

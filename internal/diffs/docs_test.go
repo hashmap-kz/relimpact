@@ -112,7 +112,7 @@ func TestFormatAllDocDiffs(t *testing.T) {
 
 	output := FormatAllDocDiffs([]DocDiff{docDiff1, docDiff2})
 
-	assert.True(t, strings.HasPrefix(output, "## Documentation Changes"))
+	assert.True(t, strings.HasPrefix(output, "\n---\n## Documentation Changes"))
 	assert.Contains(t, output, "**`docs/one.md`**")
 	assert.Contains(t, output, "**`docs/two.md`**")
 	assert.Contains(t, output, "- Section 1")
