@@ -74,6 +74,8 @@ relimpact --old=v1.0.0 --new=HEAD > release-impact.md
     - scripts/deploy.sh
 ```
 
+**See also [docs](./docs) for more examples.**
+
 --- 
 
 ## GitHub Action
