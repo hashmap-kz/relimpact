@@ -107,6 +107,7 @@ func runDiffs(
 	var wgDiffs sync.WaitGroup
 	apiDiffCh := make(chan string, 1)
 	docsDiffCh := make(chan string, 1)
+	modsDiffCh := make(chan string, 1)
 	otherDiffCh := make(chan string, 1)
 
 	// API diff
@@ -125,6 +126,14 @@ func runDiffs(
 		docsDiffCh <- diffs.FormatAllDocDiffs(docsDiffs) + "\n"
 	}()
 
+	// go.mod diff
+	wgDiffs.Add(1)
+	go func() {
+		defer wgDiffs.Done()
+		modDiffs := diffs.DiffGoMod(tmpOld, tmpNew)
+		modsDiffCh <- modDiffs.String() + "\n"
+	}()
+
 	// Other files diff
 	wgDiffs.Add(1)
 	go func() {
@@ -137,12 +146,14 @@ func runDiffs(
 	wgDiffs.Wait()
 	close(apiDiffCh)
 	close(docsDiffCh)
+	close(modsDiffCh)
 	close(otherDiffCh)
 
 	//  Collect results
 	var sb strings.Builder
 	sb.WriteString(<-apiDiffCh)
 	sb.WriteString(<-docsDiffCh)
+	sb.WriteString(<-modsDiffCh)
 	sb.WriteString(<-otherDiffCh)
 
 	return sb.String()
