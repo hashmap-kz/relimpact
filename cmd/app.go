@@ -82,11 +82,11 @@ func snap(tmpOld, tmpNew string) (map[string]diffs.APIPackage, map[string]diffs.
 	wgSnapshots.Add(2)
 	go func() {
 		defer wgSnapshots.Done()
-		apiOldCh <- diffs.SnapshotAPI(tmpOld)
+		apiOldCh <- diffs.SnapshotAPIParallel(tmpOld)
 	}()
 	go func() {
 		defer wgSnapshots.Done()
-		apiNewCh <- diffs.SnapshotAPI(tmpNew)
+		apiNewCh <- diffs.SnapshotAPIParallel(tmpNew)
 	}()
 
 	wgSnapshots.Wait()

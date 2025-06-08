@@ -16,8 +16,8 @@ func CreateChangelogSequential(repoDir, oldRef, newRef string) string {
 	defer gitutils.CleanupWorktree(repoDir, tmpNew)
 
 	// Snapshot API
-	oldAPI := diffs.SnapshotAPI(tmpOld)
-	newAPI := diffs.SnapshotAPI(tmpNew)
+	oldAPI := diffs.SnapshotAPIParallel(tmpOld)
+	newAPI := diffs.SnapshotAPIParallel(tmpNew)
 
 	// Run diffs
 	var sb strings.Builder

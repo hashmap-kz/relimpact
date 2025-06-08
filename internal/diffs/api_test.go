@@ -108,8 +108,8 @@ func Bar() {}
 	defer gitutils.CleanupWorktree(tmpDir, oldWorktree)
 
 	// Snapshot API
-	oldAPI := SnapshotAPI(filepath.Join(oldWorktree, "mypkg"))
-	newAPI := SnapshotAPI(filepath.Join(tmpDir, "mypkg"))
+	oldAPI := SnapshotAPIParallel(filepath.Join(oldWorktree, "mypkg"))
+	newAPI := SnapshotAPIParallel(filepath.Join(tmpDir, "mypkg"))
 
 	// Diff
 	apiDiff := DiffAPI(oldAPI, newAPI)
@@ -125,7 +125,4 @@ func Bar() {}
 		}
 	}
 	require.True(t, foundBar, "expected Bar() to be reported as added")
-
-	// print diff for debug
-	// t.Logf("API Diff:\n%s", apiDiff.String())
 }
