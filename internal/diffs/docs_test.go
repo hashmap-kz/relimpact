@@ -1,8 +1,12 @@
 package diffs
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -113,4 +117,47 @@ func TestFormatAllDocDiffs(t *testing.T) {
 	assert.Contains(t, output, "**`docs/two.md`**")
 	assert.Contains(t, output, "- Section 1")
 	assert.Contains(t, output, "- https://example.com")
+}
+
+func TestDiffDocs_IntegrationTempDir(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create old and new dirs
+	oldDir := filepath.Join(tmpDir, "old")
+	newDir := filepath.Join(tmpDir, "new")
+	require.NoError(t, os.Mkdir(oldDir, 0o755))
+	require.NoError(t, os.Mkdir(newDir, 0o755))
+
+	// Write old file
+	require.NoError(t, os.WriteFile(filepath.Join(oldDir, "test.md"), []byte(`# Intro
+
+This is intro.
+
+[Link](https://old.link)
+
+![Image](old.png)
+`), 0o644))
+
+	// Write new file
+	require.NoError(t, os.WriteFile(filepath.Join(newDir, "test.md"), []byte(`# Intro
+
+This is intro modified.
+
+# New Section
+
+[Link](https://new.link)
+`), 0o644))
+
+	// Run DiffDocs
+	diffsResult := DiffDocs(oldDir, newDir)
+
+	assert.Len(t, diffsResult, 1)
+
+	diff := diffsResult[0]
+	assert.Equal(t, "test.md", diff.File)
+	assert.ElementsMatch(t, []string{"New Section"}, diff.HeadingsAdded)
+	assert.ElementsMatch(t, []string{"https://new.link"}, diff.LinksAdded)
+	assert.ElementsMatch(t, []string{"https://old.link"}, diff.LinksRemoved)
+	assert.ElementsMatch(t, []string{"old.png"}, diff.ImagesRemoved)
+	assert.NotEmpty(t, diff.SectionWordChange) // should have Intro 3 -> 4 or similar
 }

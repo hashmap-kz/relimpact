@@ -38,6 +38,6 @@ func main() {
 	// others
 	// TODO: configurable
 	includeExts := []string{".sh", ".sql", ".json", ".yaml", ".yml", ".conf", ".ini", ".txt", ".csv"}
-	otherSection := diffs.DiffOtherFilesStruct(*oldRef, *newRef, includeExts)
+	otherSection := diffs.DiffOtherFilesStruct(".", *oldRef, *newRef, includeExts)
 	fmt.Println(otherSection.String())
 }

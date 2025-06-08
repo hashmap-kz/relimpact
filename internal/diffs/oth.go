@@ -54,8 +54,8 @@ func (s *OtherFilesDiffSummary) String() string {
 	return b.String()
 }
 
-func DiffOtherFilesStruct(oldRef, newRef string, includeExts []string) *OtherFilesDiffSummary {
-	changes := collectOtherFileChanges(oldRef, newRef, includeExts)
+func DiffOtherFilesStruct(workDir, oldRef, newRef string, includeExts []string) *OtherFilesDiffSummary {
+	changes := collectOtherFileChanges(workDir, oldRef, newRef, includeExts)
 
 	var summary OtherFilesDiffSummary
 
@@ -89,10 +89,11 @@ func DiffOtherFilesStruct(oldRef, newRef string, includeExts []string) *OtherFil
 	return &summary
 }
 
-func collectOtherFileChanges(oldRef, newRef string, includeExts []string) map[string]map[string][]string {
+func collectOtherFileChanges(workDir, oldRef, newRef string, includeExts []string) map[string]map[string][]string {
 	changes := make(map[string]map[string][]string)
 
 	cmd := exec.Command("git", "diff", "--name-status", oldRef, newRef)
+	cmd.Dir = workDir
 	out, err := cmd.Output()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "git diff failed: %v\n", err)
