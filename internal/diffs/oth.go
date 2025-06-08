@@ -54,7 +54,7 @@ func (s *OtherFilesDiffSummary) String() string {
 	return b.String()
 }
 
-func DiffOtherFilesStruct(workDir, oldRef, newRef string, includeExts []string) *OtherFilesDiffSummary {
+func DiffOther(workDir, oldRef, newRef string, includeExts []string) *OtherFilesDiffSummary {
 	changes := collectOtherFileChanges(workDir, oldRef, newRef, includeExts)
 
 	var summary OtherFilesDiffSummary

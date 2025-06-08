@@ -74,8 +74,8 @@ func TestDiffOtherFilesStruct_IntegrationTempGit(t *testing.T) {
 	testutils.RunGit(t, tmpDir, "commit", "-m", "update files")
 	newRef := "HEAD"
 
-	// Run DiffOtherFilesStruct
-	summary := DiffOtherFilesStruct(tmpDir, oldRef, newRef, []string{".sh", ".json"})
+	// Run DiffOther
+	summary := DiffOther(tmpDir, oldRef, newRef, []string{".sh", ".json"})
 
 	assert.NotEmpty(t, summary.Diffs)
 

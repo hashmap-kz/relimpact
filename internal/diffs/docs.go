@@ -207,6 +207,8 @@ func parseDoc(path string) *DocInfo {
 		if entering {
 			switch n := n.(type) {
 			case *ast.Heading:
+				// TODO: update
+				//nolint:staticcheck
 				headingText := string(n.Text(content))
 				info.Headings = append(info.Headings, headingText)
 				currentHeading = headingText
@@ -217,6 +219,8 @@ func parseDoc(path string) *DocInfo {
 				dest := string(n.Destination)
 				info.Images = append(info.Images, dest)
 			case *ast.Text:
+				// TODO: update
+				//nolint:staticcheck
 				words := countWords(string(n.Text(content)))
 				info.SectionWord[currentHeading] += words
 			}
