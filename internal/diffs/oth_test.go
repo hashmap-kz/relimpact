@@ -59,7 +59,7 @@ func TestDiffOtherFilesStruct_IntegrationTempGit(t *testing.T) {
 	runGit(t, tmpDir, "config", "user.email", "test@example.com")
 
 	// Write initial file
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "script.sh"), []byte("echo hello\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "script.sh"), []byte("echo hello\n"), 0o600))
 	runGit(t, tmpDir, "add", "script.sh")
 	runGit(t, tmpDir, "commit", "-m", "initial commit")
 	// After first commit
@@ -67,9 +67,9 @@ func TestDiffOtherFilesStruct_IntegrationTempGit(t *testing.T) {
 	oldRef := "oldref"
 
 	// Modify file
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "script.sh"), []byte("echo hello world\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "script.sh"), []byte("echo hello world\n"), 0o600))
 	// Add new file
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.json"), []byte(`{"key": "value"}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.json"), []byte(`{"key": "value"}`), 0o600))
 	runGit(t, tmpDir, "add", "-A")
 	runGit(t, tmpDir, "commit", "-m", "update files")
 	newRef := "HEAD"
@@ -80,7 +80,7 @@ func TestDiffOtherFilesStruct_IntegrationTempGit(t *testing.T) {
 	assert.NotEmpty(t, summary.Diffs)
 
 	foundSh := false
-	foundJson := false
+	foundJSON := false
 
 	for _, d := range summary.Diffs {
 		if d.Ext == ".sh" {
@@ -88,15 +88,16 @@ func TestDiffOtherFilesStruct_IntegrationTempGit(t *testing.T) {
 			assert.ElementsMatch(t, []string{"script.sh"}, d.Modified)
 		}
 		if d.Ext == ".json" {
-			foundJson = true
+			foundJSON = true
 			assert.ElementsMatch(t, []string{"config.json"}, d.Added)
 		}
 	}
 
 	assert.True(t, foundSh)
-	assert.True(t, foundJson)
+	assert.True(t, foundJSON)
 }
 
+// TODO: testutils
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)

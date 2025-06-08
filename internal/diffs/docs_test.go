@@ -136,7 +136,7 @@ This is intro.
 [Link](https://old.link)
 
 ![Image](old.png)
-`), 0o644))
+`), 0o600))
 
 	// Write new file
 	require.NoError(t, os.WriteFile(filepath.Join(newDir, "test.md"), []byte(`# Intro
@@ -146,7 +146,7 @@ This is intro modified.
 # New Section
 
 [Link](https://new.link)
-`), 0o644))
+`), 0o600))
 
 	// Run DiffDocs
 	diffsResult := DiffDocs(oldDir, newDir)

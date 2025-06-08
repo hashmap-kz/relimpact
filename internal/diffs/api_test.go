@@ -107,7 +107,7 @@ func TestAPIDiff_IntegrationTempGit(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "foo.go"), []byte(`package mypkg
 
 func Foo() {}
-`), 0o644))
+`), 0o600))
 
 	runGit(t, tmpDir, "add", "-A")
 	runGit(t, tmpDir, "commit", "-m", "v1")
@@ -117,7 +117,7 @@ func Foo() {}
 	require.NoError(t, os.WriteFile(filepath.Join(pkgDir, "bar.go"), []byte(`package mypkg
 
 func Bar() {}
-`), 0o644))
+`), 0o600))
 
 	runGit(t, tmpDir, "add", "-A")
 	runGit(t, tmpDir, "commit", "-m", "add Bar")
@@ -149,6 +149,7 @@ func Bar() {}
 	t.Logf("API Diff:\n%s", apiDiff.String())
 }
 
+// TODO: testutils
 func runGo(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("go", args...)

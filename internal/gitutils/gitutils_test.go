@@ -18,13 +18,14 @@ func TestCheckoutAndCleanupWorktree(t *testing.T) {
 	runGit(t, tmpDir, "config", "user.email", "test@example.com")
 
 	// Write a file
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "file.txt"), []byte("hello world"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "file.txt"), []byte("hello world"), 0o600))
 	runGit(t, tmpDir, "add", "file.txt")
 	runGit(t, tmpDir, "commit", "-m", "initial commit")
 	runGit(t, tmpDir, "tag", "v1")
 
 	// Checkout worktree at v1
-	oldCwd, _ := os.Getwd()
+	oldCwd, err := os.Getwd()
+	require.NoError(t, err)
 
 	// restore working dir
 	defer func(dir string) {
@@ -41,7 +42,7 @@ func TestCheckoutAndCleanupWorktree(t *testing.T) {
 	t.Logf("Worktree dir: %s", worktreeDir)
 
 	// Verify worktree dir exists and contains file.txt
-	_, err := os.Stat(filepath.Join(worktreeDir, "file.txt"))
+	_, err = os.Stat(filepath.Join(worktreeDir, "file.txt"))
 	require.NoError(t, err, "file.txt should exist in worktree")
 
 	// Cleanup worktree
@@ -53,6 +54,7 @@ func TestCheckoutAndCleanupWorktree(t *testing.T) {
 	require.True(t, os.IsNotExist(err), "worktree dir should be removed")
 }
 
+// TODO: testutils
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
