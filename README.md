@@ -34,7 +34,7 @@
 ### Run on a GitHub PR:
 
 ```bash
-relimpact --old v1.0.0 --new HEAD --output release-impact.md
+relimpact --old=v1.0.0 --new=HEAD > release-impact.md
 ```
 
 ### Example Output
