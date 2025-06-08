@@ -19,7 +19,6 @@ func main() {
 	}
 
 	// API
-
 	tmpOld := gitutils.CheckoutWorktree(*oldRef)
 	defer gitutils.CleanupWorktree(tmpOld)
 
@@ -29,23 +28,18 @@ func main() {
 	oldAPI := diffs.SnapshotAPI(tmpOld)
 	newAPI := diffs.SnapshotAPI(tmpNew)
 
-	diffs.DiffAPI(oldAPI, newAPI)
+	apiDiffResult := diffs.DiffAPI(oldAPI, newAPI)
+	fmt.Println(apiDiffResult.String())
 
 	// docs
-
 	docsDiffs := diffs.DiffDocs(tmpOld, tmpNew)
-	if len(docsDiffs) > 0 {
-		for _, section := range docsDiffs {
-			fmt.Println(section)
-		}
+	for i := range docsDiffs {
+		fmt.Println(docsDiffs[i].String())
 	}
 
 	// others
-
 	// TODO: configurable
 	includeExts := []string{".sh", ".sql", ".json", ".yaml", ".yml", ".conf", ".ini", ".txt", ".csv"}
-	otherSection := diffs.DiffOtherFiles(*oldRef, *newRef, includeExts)
-	if otherSection != "" {
-		fmt.Println(otherSection)
-	}
+	otherSection := diffs.DiffOtherFilesStruct(*oldRef, *newRef, includeExts)
+	fmt.Println(otherSection.String())
 }

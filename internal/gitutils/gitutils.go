@@ -1,6 +1,7 @@
 package gitutils
 
 import (
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -21,8 +22,8 @@ func CleanupWorktree(path string) {
 
 func run(name string, args ...string) {
 	cmd := exec.Command(name, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {
 		log.Fatal(err)
 	}
