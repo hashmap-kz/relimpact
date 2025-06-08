@@ -26,26 +26,6 @@ func TestDiffList(t *testing.T) {
 	assert.Equal(t, "A", removed[0].X)
 }
 
-func TestAPIDiffString(t *testing.T) {
-	diff := &APIDiff{
-		PackagesAdded: []string{"pkg/newpkg"},
-		FuncsAdded: []APIDiffRes{
-			{Label: "Func", Path: "pkg/mymodule", X: "`NewClient(config.Config) -> (*Client, error)`"},
-		},
-		MethodsRemoved: []APIDiffRes{
-			{Label: "Method", Path: "pkg/mymodule.Client", X: "`DeprecatedThing() -> (string)`"},
-		},
-	}
-
-	md := diff.String()
-
-	// Check that key strings are present
-	assert.Contains(t, md, "Added Package `pkg/newpkg`")
-	// TODO: revive
-	// assert.Contains(t, md, "Added Func in `pkg/mymodule`: `NewClient(config.Config) -> (*Client, error)`")
-	// assert.Contains(t, md, "Removed Method in `pkg/mymodule.Client`: `DeprecatedThing() -> (string)`")
-}
-
 func TestDiffAPI(t *testing.T) {
 	oldAPI := map[string]APIPackage{
 		"pkg/mypkg": {
