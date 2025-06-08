@@ -69,6 +69,63 @@ relimpact --old v1.0.0 --new HEAD --output release-impact.md
 
 ---
 
+## Installation
+
+### Docker images are available at [quay.io/hashmap_kz/relimpact](https://quay.io/repository/hashmap_kz/relimpact)
+
+```bash
+docker pull quay.io/hashmap_kz/relimpact:latest
+```
+
+### Manual Installation
+
+1. Download the latest binary for your platform from
+   the [Releases page](https://github.com/hashmap-kz/relimpact/releases).
+2. Place the binary in your system's `PATH` (e.g., `/usr/local/bin`).
+
+### Installation script for Unix-Based OS _(requires: tar, curl, jq)_:
+
+```bash
+(
+set -euo pipefail
+
+OS="$(uname | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')"
+TAG="$(curl -s https://api.github.com/repos/hashmap-kz/relimpact/releases/latest | jq -r .tag_name)"
+
+curl -L "https://github.com/hashmap-kz/relimpact/releases/download/${TAG}/relimpact_${TAG}_${OS}_${ARCH}.tar.gz" |
+tar -xzf - -C /usr/local/bin && \
+chmod +x /usr/local/bin/relimpact
+)
+```
+
+### Homebrew installation
+
+```bash
+brew tap hashmap-kz/homebrew-tap
+brew install relimpact
+```
+
+### Package-Based installation (suitable in CI/CD)
+
+#### Debian
+
+```bash
+sudo apt update -y && sudo apt install -y curl
+curl -LO https://github.com/hashmap-kz/relimpact/releases/latest/download/relimpact_linux_amd64.deb
+sudo dpkg -i relimpact_linux_amd64.deb
+```
+
+#### Apline Linux
+
+```bash
+apk update && apk add --no-cache bash curl
+curl -LO https://github.com/hashmap-kz/relimpact/releases/latest/download/relimpact_linux_amd64.apk
+apk add relimpact_linux_amd64.apk --allow-untrusted
+```
+
+---
+
 ## Design Notes
 
 `relimpact` helps you understand **what really changed** between Git refs, in a way that is:
