@@ -27,16 +27,55 @@
 
 ---
 
-## About
+## Quickstart
+
+### Run on a GitHub PR:
+
+```bash
+relimpact --old v1.0.0 --new HEAD --output release-impact.md
+```
+
+### Example Output
+
+```markdown
+## API Diff
+
+- Added Funcs in `pkg/mymodule`: `NewClient(config.Config) -> (*Client, error)`
+- Method `DoSomething` in `pkg/mymodule.Client` changed signature: `(ctx context.Context) -> (error)`
+- Removed Method `DeprecatedThing` from `pkg/mymodule.Client`: `() -> (string)`
+
+## Documentation Changes: `README.md`
+
+### Headings added:
+- Advanced Usage
+
+### Section Word Count Changes:
+- Section `Quick Start`: 142 -> 155 words
+- Section `Deprecated Options`: REMOVED (45 words)
+- Section `New Features`: ADDED (67 words)
+
+## Other Files Changes
+
+### .sql
+
+- Added:
+    - migrations/20240608_add_user_table.sql
+
+### .sh
+
+- Modified:
+    - scripts/deploy.sh
+```
+
+---
+
+## Design Notes
 
 `relimpact` helps you understand **what really changed** between Git refs, in a way that is:
 
-- **Human-friendly**
-- **Structured**
-- **Noise-free**
-- **Release-ready**
+> **Human-friendly** / **Structured** / **Noise-free** / **Release-ready**
 
-### Go Source API Changes
+### 1. Go Source API Changes
 
 - Tracks changes to your **public exported API**:
     - `struct` fields
@@ -56,7 +95,7 @@
         - changed constants
         - new API elements.
 
-### Markdown Docs Changes
+### 2. Markdown Docs Changes
 
 - Tracks changes in **Markdown files**:
     - any `.md` in your repo.
@@ -74,7 +113,7 @@
     - Clear "Section X: 142 -> 155 words" style diffs.
     - Great for docs-heavy projects and libraries.
 
-### Other Files Changes
+### 3. Other Files Changes
 
 - Tracks other file changes, grouped by extension:
     - `.sh`, `.sql`, `.json`, `.yaml`, `.conf`, `.ini`, `.txt`, etc.
