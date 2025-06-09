@@ -18,6 +18,7 @@ type GoModDiff struct {
 func (d *GoModDiff) String() string {
 	var b strings.Builder
 	b.WriteString("\n---\n## go.mod Changes\n\n")
+	b.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
 
 	if len(d.DependenciesAdded) > 0 {
 		b.WriteString("### Dependencies added\n")
@@ -47,6 +48,7 @@ func (d *GoModDiff) String() string {
 		b.WriteString("_No changes detected._\n\n")
 	}
 
+	b.WriteString("</details>\n\n")
 	return b.String()
 }
 

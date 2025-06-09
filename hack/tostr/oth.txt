@@ -1,0 +1,31 @@
+func (s *OtherFilesDiffSummary) StringV1() string {
+	if len(s.Diffs) == 0 {
+		return ""
+	}
+
+	var b bytes.Buffer
+	b.WriteString("\n---\n## Other Files Changes\n\n")
+
+	for _, d := range s.Diffs {
+		b.WriteString(fmt.Sprintf("### `%s`\n\n", d.Ext))
+
+		writeSection := func(label string, files []string) {
+			if len(files) == 0 {
+				return
+			}
+			b.WriteString(fmt.Sprintf("- %s:\n", label))
+			sort.Strings(files)
+			for _, f := range files {
+				b.WriteString(fmt.Sprintf("  - %s\n", f))
+			}
+			b.WriteString("\n")
+		}
+
+		writeSection("Added", d.Added)
+		writeSection("Modified", d.Modified)
+		writeSection("Removed", d.Removed)
+		writeSection("Other", d.Other)
+	}
+
+	return b.String()
+}

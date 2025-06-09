@@ -60,3 +60,81 @@ func (d *DocDiff) StringV1() string {
 
 	return b.String()
 }
+
+
+func (d *DocDiff) StringV2() string {
+	var b bytes.Buffer
+
+	b.WriteString(fmt.Sprintf("### Doc File: **`%s`**\n\n", d.File))
+
+	// Summary
+	b.WriteString("#### Summary:\n")
+	b.WriteString(fmt.Sprintf("- Headings added: %d\n", len(d.HeadingsAdded)))
+	b.WriteString(fmt.Sprintf("- Headings removed: %d\n", len(d.HeadingsRemoved)))
+	b.WriteString(fmt.Sprintf("- Links added: %d\n", len(d.LinksAdded)))
+	b.WriteString(fmt.Sprintf("- Links removed: %d\n", len(d.LinksRemoved)))
+	b.WriteString(fmt.Sprintf("- Images added: %d\n", len(d.ImagesAdded)))
+	b.WriteString(fmt.Sprintf("- Images removed: %d\n", len(d.ImagesRemoved)))
+	b.WriteString(fmt.Sprintf("- Sections changed: %d\n\n", len(d.SectionWordChange)))
+
+	// Headings
+	if len(d.HeadingsAdded) > 0 {
+		b.WriteString("#### Headings added:\n")
+		for _, h := range d.HeadingsAdded {
+			b.WriteString(fmt.Sprintf("- %s\n", h))
+		}
+		b.WriteString("\n")
+	}
+	if len(d.HeadingsRemoved) > 0 {
+		b.WriteString("#### Headings removed:\n")
+		for _, h := range d.HeadingsRemoved {
+			b.WriteString(fmt.Sprintf("- %s\n", h))
+		}
+		b.WriteString("\n")
+	}
+
+	// Links
+	if len(d.LinksAdded) > 0 {
+		b.WriteString("#### Links added:\n")
+		for _, l := range d.LinksAdded {
+			b.WriteString(fmt.Sprintf("- %s\n", l))
+		}
+		b.WriteString("\n")
+	}
+	if len(d.LinksRemoved) > 0 {
+		b.WriteString("#### Links removed:\n")
+		for _, l := range d.LinksRemoved {
+			b.WriteString(fmt.Sprintf("- %s\n", l))
+		}
+		b.WriteString("\n")
+	}
+
+	// Images
+	if len(d.ImagesAdded) > 0 {
+		b.WriteString("#### Images added:\n")
+		for _, img := range d.ImagesAdded {
+			b.WriteString(fmt.Sprintf("- %s\n", img))
+		}
+		b.WriteString("\n")
+	}
+	if len(d.ImagesRemoved) > 0 {
+		b.WriteString("#### Images removed:\n")
+		for _, img := range d.ImagesRemoved {
+			b.WriteString(fmt.Sprintf("- %s\n", img))
+		}
+		b.WriteString("\n")
+	}
+
+	// Section Word Count Changes -> use <details> for large ones
+	if len(d.SectionWordChange) > 0 {
+		b.WriteString(fmt.Sprintf("<details>\n<summary>Section Word Count Changes (%d changes)</summary>\n\n", len(d.SectionWordChange)))
+		for _, line := range d.SectionWordChange {
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+		b.WriteString("\n</details>\n\n")
+	}
+
+	return b.String()
+}
+
