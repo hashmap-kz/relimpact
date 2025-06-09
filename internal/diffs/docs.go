@@ -50,7 +50,8 @@ func FormatAllDocDiffs(diffs []DocDiff) string {
 func (d *DocDiff) String() string {
 	var b bytes.Buffer
 
-	b.WriteString(fmt.Sprintf("### Doc File: **`%s`**\n\n", d.File))
+	b.WriteString(fmt.Sprintf("\n### Doc File: **`%s`**\n\n", d.File))
+	b.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
 
 	// Summary
 	b.WriteString("#### Summary:\n")
@@ -110,7 +111,7 @@ func (d *DocDiff) String() string {
 		b.WriteString("\n")
 	}
 
-	// Section Word Count Changes -> use <details> for large ones
+	// Section Word Count Changes
 	if len(d.SectionWordChange) > 0 {
 		b.WriteString(fmt.Sprintf("<details>\n<summary>Section Word Count Changes (%d changes)</summary>\n\n", len(d.SectionWordChange)))
 		for _, line := range d.SectionWordChange {
@@ -120,6 +121,7 @@ func (d *DocDiff) String() string {
 		b.WriteString("\n</details>\n\n")
 	}
 
+	b.WriteString("</details>\n\n")
 	return b.String()
 }
 

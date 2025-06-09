@@ -32,6 +32,7 @@ func (s *OtherFilesDiffSummary) String() string {
 
 	for _, d := range s.Diffs {
 		b.WriteString(fmt.Sprintf("### `%s`\n\n", d.Ext))
+		b.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
 
 		writeSection := func(label string, files []string) {
 			if len(files) == 0 {
@@ -49,6 +50,8 @@ func (s *OtherFilesDiffSummary) String() string {
 		writeSection("Modified", d.Modified)
 		writeSection("Removed", d.Removed)
 		writeSection("Other", d.Other)
+
+		b.WriteString("</details>\n\n")
 	}
 
 	return b.String()

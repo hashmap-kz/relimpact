@@ -1,0 +1,34 @@
+func (d *GoModDiff) StringV1() string {
+	var b strings.Builder
+	b.WriteString("\n---\n## go.mod Changes\n\n")
+
+	if len(d.DependenciesAdded) > 0 {
+		b.WriteString("### Dependencies added\n")
+		for _, line := range d.DependenciesAdded {
+			b.WriteString("- " + line + "\n")
+		}
+		b.WriteString("\n")
+	}
+
+	if len(d.DependenciesRemoved) > 0 {
+		b.WriteString("### Dependencies removed\n")
+		for _, line := range d.DependenciesRemoved {
+			b.WriteString("- " + line + "\n")
+		}
+		b.WriteString("\n")
+	}
+
+	if len(d.DependenciesUpdated) > 0 {
+		b.WriteString("### Dependencies updated\n")
+		for _, line := range d.DependenciesUpdated {
+			b.WriteString("- " + line + "\n")
+		}
+		b.WriteString("\n")
+	}
+
+	if len(d.DependenciesAdded)+len(d.DependenciesRemoved)+len(d.DependenciesUpdated) == 0 {
+		b.WriteString("_No changes detected._\n\n")
+	}
+
+	return b.String()
+}
