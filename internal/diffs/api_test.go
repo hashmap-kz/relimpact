@@ -129,3 +129,58 @@ func Bar() {}
 	// print diff for debug
 	// t.Logf("API Diff:\n%s", apiDiff.String())
 }
+
+func TestAPIDiff_String(t *testing.T) {
+	d := &APIDiff{
+		PackagesAdded:   []string{"pkg/foo"},
+		PackagesRemoved: []string{"pkg/bar"},
+		FuncsAdded: []APIDiffRes{
+			{Path: "pkg/foo", Label: "Funcs", X: "NewFoo() -> error"},
+		},
+		FuncsRemoved: []APIDiffRes{
+			{Path: "pkg/bar", Label: "Funcs", X: "OldBar() -> error"},
+		},
+		TypesRemoved: []APIDiffRes{
+			{Path: "pkg/bar", Label: "Types", X: "OldType"},
+		},
+	}
+
+	out := d.String()
+
+	// Check top-level markers
+	assert.Contains(t, out, "## API Changes")
+	assert.Contains(t, out, "- [Summary](#summary)")
+	assert.Contains(t, out, "- [Breaking Changes](#breaking-changes)")
+	assert.Contains(t, out, "- [Packages Added](#packages-added)")
+	assert.Contains(t, out, "- [Packages Removed](#packages-removed)")
+	assert.Contains(t, out, "- [Package Changes](#package-changes)")
+
+	// Check Summary table line for Types Removed
+	assert.Contains(t, out, "| Types Removed      |     1 |")
+
+	// Check Breaking Changes line
+	assert.Contains(t, out, "- Types Removed: **1**")
+
+	// Check Packages Added section
+	assert.Contains(t, out, "### Packages Added")
+	assert.Contains(t, out, "- `pkg/foo`")
+
+	// Check Packages Removed section
+	assert.Contains(t, out, "### Packages Removed")
+	assert.Contains(t, out, "- `pkg/bar`")
+
+	// Check Package Changes header
+	assert.Contains(t, out, "### Package Changes")
+
+	// Check that Package `pkg/foo` section is present
+	assert.Contains(t, out, "#### Package `pkg/foo`")
+	assert.Contains(t, out, "- Added Funcs:")
+	assert.Contains(t, out, "    - NewFoo() -> error")
+
+	// Check that Package `pkg/bar` section is present
+	assert.Contains(t, out, "#### Package `pkg/bar`")
+	assert.Contains(t, out, "- Removed Funcs:")
+	assert.Contains(t, out, "    - OldBar() -> error")
+	assert.Contains(t, out, "- Removed Types:")
+	assert.Contains(t, out, "    - OldType")
+}
