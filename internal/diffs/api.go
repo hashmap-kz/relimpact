@@ -33,10 +33,6 @@ type APIDiffRes struct {
 	X     string
 }
 
-func (dr *APIDiffRes) String() string {
-	return dr.Path + "/" + dr.X
-}
-
 type APIDiff struct {
 	PackagesAdded   []string     `json:"packages_added,omitempty"`
 	PackagesRemoved []string     `json:"packages_removed,omitempty"`
@@ -55,6 +51,166 @@ type APIDiff struct {
 }
 
 func (d *APIDiff) String() string {
+	var sb strings.Builder
+	sb.WriteString("## API Changes\n")
+
+	// Build Summary table data
+	summary := []struct {
+		Name  string
+		Count int
+	}{
+		{"Packages Added", len(d.PackagesAdded)},
+		{"Packages Removed", len(d.PackagesRemoved)},
+		{"Funcs Added", len(d.FuncsAdded)},
+		{"Funcs Removed", len(d.FuncsRemoved)},
+		{"Vars Added", len(d.VarsAdded)},
+		{"Vars Removed", len(d.VarsRemoved)},
+		{"Consts Added", len(d.ConstsAdded)},
+		{"Consts Removed", len(d.ConstsRemoved)},
+		{"Types Added", len(d.TypesAdded)},
+		{"Types Removed", len(d.TypesRemoved)},
+		{"Fields Added", len(d.FieldsAdded)},
+		{"Fields Removed", len(d.FieldsRemoved)},
+		{"Methods Added", len(d.MethodsAdded)},
+		{"Methods Removed", len(d.MethodsRemoved)},
+	}
+
+	// Compute total changes and breaking changes
+	var totalChanges int
+	breakingChanges := map[string]int{}
+	for _, s := range summary {
+		totalChanges += s.Count
+		switch s.Name {
+		case "Packages Removed", "Funcs Removed", "Vars Removed", "Consts Removed", "Types Removed", "Fields Removed", "Methods Removed":
+			breakingChanges[s.Name] = s.Count
+		}
+	}
+
+	// Write TOC
+	sb.WriteString("\n- [Summary](#summary)\n")
+	sb.WriteString("- [Breaking Changes](#breaking-changes)\n")
+	if len(d.PackagesAdded) > 0 {
+		sb.WriteString("- [Packages Added](#packages-added)\n")
+	}
+	if len(d.PackagesRemoved) > 0 {
+		sb.WriteString("- [Packages Removed](#packages-removed)\n")
+	}
+	sb.WriteString("- [Package Changes](#package-changes)\n")
+
+	// Summary table
+	sb.WriteString("\n### Summary\n\n")
+	sb.WriteString("|   Kind of Change   | Count |\n")
+	sb.WriteString("|--------------------|-------|\n")
+	// width:20,7; minus two spaces:18,5;
+	for _, s := range summary {
+		sb.WriteString(fmt.Sprintf("| %-18s | %5d |\n", s.Name, s.Count))
+	}
+	sb.WriteString(fmt.Sprintf("| %-18s | %5d |\n", "Total Changes", totalChanges))
+
+	// Breaking Changes section
+	sb.WriteString("\n### Breaking Changes\n\n")
+	if len(breakingChanges) == 0 {
+		sb.WriteString("_No breaking changes detected._\n")
+	} else {
+		for k, v := range breakingChanges {
+			if v > 0 {
+				sb.WriteString(fmt.Sprintf("- %s: **%d**\n", k, v))
+			}
+		}
+	}
+
+	// Packages added/removed
+	writeSectionSimple := func(prefix string, packages []string) {
+		if len(packages) == 0 {
+			return
+		}
+		sb.WriteString(fmt.Sprintf("\n### %s\n\n", prefix))
+		sorted := append([]string{}, packages...)
+		sort.Strings(sorted)
+		for _, pkg := range sorted {
+			sb.WriteString(fmt.Sprintf("- `%s`\n", pkg))
+		}
+	}
+
+	writeSectionSimple("Packages Added", d.PackagesAdded)
+	writeSectionSimple("Packages Removed", d.PackagesRemoved)
+
+	// Group APIDiffRes items by package, by label, by added/removed
+	type changeKind string
+	const (
+		added   changeKind = "Added"
+		removed changeKind = "Removed"
+	)
+
+	groupByPkgLabel := func(items []APIDiffRes, kind changeKind) map[string]map[string][]string {
+		group := make(map[string]map[string][]string)
+		for _, res := range items {
+			if _, ok := group[res.Path]; !ok {
+				group[res.Path] = make(map[string][]string)
+			}
+			group[res.Path][fmt.Sprintf("%s %s", kind, res.Label)] = append(group[res.Path][fmt.Sprintf("%s %s", kind, res.Label)], res.X)
+		}
+		return group
+	}
+
+	// Build groupings
+	grouped := make(map[string]map[string][]string)
+	mergeGroup := func(m map[string]map[string][]string) {
+		for pkg, labels := range m {
+			if _, ok := grouped[pkg]; !ok {
+				grouped[pkg] = make(map[string][]string)
+			}
+			for label, xs := range labels {
+				grouped[pkg][label] = append(grouped[pkg][label], xs...)
+			}
+		}
+	}
+
+	mergeGroup(groupByPkgLabel(d.FuncsAdded, added))
+	mergeGroup(groupByPkgLabel(d.FuncsRemoved, removed))
+	mergeGroup(groupByPkgLabel(d.VarsAdded, added))
+	mergeGroup(groupByPkgLabel(d.VarsRemoved, removed))
+	mergeGroup(groupByPkgLabel(d.ConstsAdded, added))
+	mergeGroup(groupByPkgLabel(d.ConstsRemoved, removed))
+	mergeGroup(groupByPkgLabel(d.TypesAdded, added))
+	mergeGroup(groupByPkgLabel(d.TypesRemoved, removed))
+	mergeGroup(groupByPkgLabel(d.FieldsAdded, added))
+	mergeGroup(groupByPkgLabel(d.FieldsRemoved, removed))
+	mergeGroup(groupByPkgLabel(d.MethodsAdded, added))
+	mergeGroup(groupByPkgLabel(d.MethodsRemoved, removed))
+
+	// Print per package with collapsible <details>
+	if len(grouped) > 0 {
+		sb.WriteString("\n### Package Changes\n")
+		pkgs := make([]string, 0, len(grouped))
+		for pkg := range grouped {
+			pkgs = append(pkgs, pkg)
+		}
+		sort.Strings(pkgs)
+		for _, pkg := range pkgs {
+			sb.WriteString(fmt.Sprintf("\n#### Package `%s`\n\n", pkg))
+			sb.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
+			labels := make([]string, 0, len(grouped[pkg]))
+			for label := range grouped[pkg] {
+				labels = append(labels, label)
+			}
+			sort.Strings(labels)
+			for _, label := range labels {
+				sb.WriteString(fmt.Sprintf("- %s:\n", label))
+				xs := grouped[pkg][label]
+				sort.Strings(xs)
+				for _, x := range xs {
+					sb.WriteString(fmt.Sprintf("    - %s\n", x))
+				}
+			}
+			sb.WriteString("\n</details>\n")
+		}
+	}
+
+	return sb.String()
+}
+
+func (d *APIDiff) StringV3() string {
 	var sb strings.Builder
 	sb.WriteString("\n---\n## API Changes\n")
 
