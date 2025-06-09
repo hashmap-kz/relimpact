@@ -329,6 +329,8 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 		api[pkg.PkgPath] = apkg
 	}
 
+	// TODO: checksum
+
 	// Save to cache
 	if err := os.MkdirAll(filepath.Dir(cachePath), 0o750); err == nil {
 		if data, err := json.MarshalIndent(api, "", "  "); err == nil {
