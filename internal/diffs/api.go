@@ -231,6 +231,8 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 		log.Fatal(err)
 	}
 
+	modulePath := getModulePath(dir)
+
 	api := make(map[string]APIPackage)
 	for _, pkg := range pkgs {
 		if len(pkg.Errors) > 0 {
@@ -241,7 +243,7 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 			continue
 		}
 
-		if !strings.HasPrefix(pkg.PkgPath, getModulePath(dir)) {
+		if !strings.HasPrefix(pkg.PkgPath, modulePath) {
 			continue
 		}
 
