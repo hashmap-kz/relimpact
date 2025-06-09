@@ -54,6 +54,14 @@ jobs:
         run: go test -v -race ./...
         shell: bash
 
+      - name: Generate coverage report
+        run: make test-cov
+
+      - name: Upload results to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
       # Uncomment these when you're ready to use GoReleaser
       #
       # - name: Install GoReleaser
