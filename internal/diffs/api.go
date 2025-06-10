@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/hashmap-kz/relimpact/internal/loggr"
+
 	"golang.org/x/tools/go/packages"
 )
 
@@ -216,7 +218,7 @@ func getCacheDir() string {
 	if dir := os.Getenv("RELIMPACT_API_CACHE_DIR"); dir != "" {
 		return dir
 	}
-	return filepath.Join(".cache", "relimpact-api-cache")
+	return filepath.Join(os.TempDir(), "relimpact-api-cache") // fallback for local runs
 }
 
 func SnapshotAPI(dir string) map[string]APIPackage {
@@ -224,14 +226,18 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 
 	sha := getGitCommitSHA(dir)
 	cachePath := filepath.Join(getCacheDir(), sha+".json")
+	loggr.Debugf("cache path: %s", cachePath)
 
 	// Try to load from cache
 	if data, err := os.ReadFile(cachePath); err == nil {
 		var cached map[string]APIPackage
 		if json.Unmarshal(data, &cached) == nil {
+			loggr.Debug("cache hit")
 			return cached
 		}
 	}
+
+	loggr.Debug("cache miss")
 
 	//nolint:gocritic
 	// cfg := &packages.Config{
