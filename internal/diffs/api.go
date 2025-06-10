@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/hashmap-kz/relimpact/internal/loggr"
 	"go/token"
 	"go/types"
 	"log"
@@ -13,6 +12,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/hashmap-kz/relimpact/internal/loggr"
 
 	"golang.org/x/tools/go/packages"
 )

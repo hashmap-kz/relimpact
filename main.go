@@ -3,8 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/hashmap-kz/relimpact/internal/loggr"
 	"os"
+
+	"github.com/hashmap-kz/relimpact/internal/loggr"
 
 	"github.com/hashmap-kz/relimpact/cmd"
 )
