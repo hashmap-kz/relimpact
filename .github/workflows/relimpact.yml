@@ -15,14 +15,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cache API snapshot
-        uses: actions/cache@v4
-        with:
-          path: .cache/relimpact-api-cache
-          key: relimpact-api-${{ github.sha }}
-          restore-keys: |
-            relimpact-api-
-
       - name: Determine previous tag
         id: prevtag
         run: |
@@ -45,6 +37,22 @@ jobs:
           else
             echo "new_ref=HEAD" >> $GITHUB_OUTPUT
           fi
+
+      - name: Cache API snapshot (old ref)
+        uses: actions/cache@v4
+        with:
+          path: .cache/relimpact-api-cache
+          key: relimpact-api-${{ steps.prevtag.outputs.prev_tag }}
+          restore-keys: |
+            relimpact-api-
+
+      - name: Cache API snapshot (new ref)
+        uses: actions/cache@v4
+        with:
+          path: .cache/relimpact-api-cache
+          key: relimpact-api-${{ steps.newref.outputs.new_ref }}
+          restore-keys: |
+            relimpact-api-
 
       - uses: hashmap-kz/relimpact-action@main
         with:
