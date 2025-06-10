@@ -2,12 +2,14 @@ package diffs
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"go/token"
 	"go/types"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -210,7 +212,27 @@ func (d *APIDiff) String() string {
 	return sb.String()
 }
 
+func getCacheDir() string {
+	if dir := os.Getenv("RELIMPACT_API_CACHE_DIR"); dir != "" {
+		return dir
+	}
+	return filepath.Join(".cache", "relimpact-api-cache")
+}
+
 func SnapshotAPI(dir string) map[string]APIPackage {
+	// TODO: debuglog
+
+	sha := getGitCommitSHA(dir)
+	cachePath := filepath.Join(getCacheDir(), sha+".json")
+
+	// Try to load from cache
+	if data, err := os.ReadFile(cachePath); err == nil {
+		var cached map[string]APIPackage
+		if json.Unmarshal(data, &cached) == nil {
+			return cached
+		}
+	}
+
 	//nolint:gocritic
 	// cfg := &packages.Config{
 	// 	Mode: packages.NeedName |
@@ -232,8 +254,8 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 	}
 
 	modulePath := getModulePath(dir)
-
 	api := make(map[string]APIPackage)
+
 	for _, pkg := range pkgs {
 		if len(pkg.Errors) > 0 {
 			fmt.Fprintf(os.Stderr, "Errors in package %s:\n", pkg.PkgPath)
@@ -298,7 +320,6 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 					atype.Kind = fmt.Sprintf("%T", ut)
 				}
 
-				// Also collect methods of named types
 				methodSet := types.NewMethodSet(o.Type())
 				for i := 0; i < methodSet.Len(); i++ {
 					m := methodSet.At(i)
@@ -313,6 +334,16 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 		}
 
 		api[pkg.PkgPath] = apkg
+	}
+
+	// TODO: checksum
+
+	// Save to cache
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o750); err == nil {
+		if data, err := json.MarshalIndent(api, "", "  "); err == nil {
+			//nolint:errcheck
+			_ = os.WriteFile(cachePath, data, 0o600)
+		}
 	}
 
 	return api
@@ -451,6 +482,16 @@ func getModulePath(dir string) string {
 	out, err := cmd.Output()
 	if err != nil {
 		log.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func getGitCommitSHA(dir string) string {
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		log.Fatalf("failed to get commit SHA in %s: %v", dir, err)
 	}
 	return strings.TrimSpace(string(out))
 }
