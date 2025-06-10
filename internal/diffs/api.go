@@ -216,7 +216,7 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 	// TODO: debuglog
 
 	sha := getGitCommitSHA(dir)
-	cachePath := filepath.Join(os.TempDir(), "relimpact-api-cache", sha+".json")
+	cachePath := filepath.Join(".cache", "relimpact-api-cache", sha+".json")
 
 	// Try to load from cache
 	if data, err := os.ReadFile(cachePath); err == nil {
