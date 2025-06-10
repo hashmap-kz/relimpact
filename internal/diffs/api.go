@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/hashmap-kz/relimpact/internal/loggr"
 
@@ -232,12 +233,12 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 	if data, err := os.ReadFile(cachePath); err == nil {
 		var cached map[string]APIPackage
 		if json.Unmarshal(data, &cached) == nil {
-			loggr.Debug("cache hit")
+			loggr.Debugf("cache hit. sha=%s", sha)
 			return cached
 		}
 	}
 
-	loggr.Debug("cache miss")
+	loggr.Debugf("cache miss. sha=%s", sha)
 
 	//nolint:gocritic
 	// cfg := &packages.Config{
@@ -254,19 +255,25 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 		Dir:  dir,
 	}
 
+	// NOTE: this is the most expensive routine in the whole app.
+
+	loadStart := time.Now()
+
 	pkgs, err := packages.Load(cfg, "./...")
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	loggr.Debugf("packages load. time=%s, sha=%s", time.Since(loadStart).String(), sha)
 
 	modulePath := getModulePath(dir)
 	api := make(map[string]APIPackage)
 
 	for _, pkg := range pkgs {
 		if len(pkg.Errors) > 0 {
-			fmt.Fprintf(os.Stderr, "Errors in package %s:\n", pkg.PkgPath)
+			loggr.Errorf("error in package: %s", pkg.PkgPath)
 			for _, err := range pkg.Errors {
-				fmt.Fprintf(os.Stderr, "  %v\n", err)
+				loggr.Errorf("error details: %v", err)
 			}
 			continue
 		}
