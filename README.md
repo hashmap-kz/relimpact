@@ -42,9 +42,13 @@ relimpact --old=v1.0.0 --new=HEAD > release-impact.md
 
 ![Basic Changelog](https://github.com/hashmap-kz/assets/blob/main/relimpact/examples/basic-changelog.png)
 
----
+**Expanded sections:**
 
 ![Expanded Changelog](https://github.com/hashmap-kz/assets/blob/main/relimpact/examples/basic-changelog-expanded.png)
+
+**PR comment:**
+
+![PR Comment](https://github.com/hashmap-kz/assets/blob/main/relimpact/examples/pr-comment.png)
 
 **See also [docs](./docs) for more examples.**
 
@@ -93,16 +97,64 @@ jobs:
             echo "new_ref=HEAD" >> $GITHUB_OUTPUT
           fi
 
+      # Cache restore for old ref
+      - name: Cache API snapshot (old ref)
+        uses: actions/cache/restore@v4
+        id: cache-old
+        with:
+          path: .cache/relimpact-api-cache
+          key: relimpact-api-${{ steps.prevtag.outputs.prev_tag }}
+          restore-keys: |
+            relimpact-api-
+
+      # Cache restore for new ref
+      - name: Cache API snapshot (new ref)
+        uses: actions/cache/restore@v4
+        id: cache-new
+        with:
+          path: .cache/relimpact-api-cache
+          key: relimpact-api-${{ steps.newref.outputs.new_ref }}
+          restore-keys: |
+            relimpact-api-
+
+      # Run your relimpact-action (this runs SnapshotAPI and writes cache)
       - uses: hashmap-kz/relimpact-action@main
         with:
           old-ref: ${{ steps.prevtag.outputs.prev_tag }}
           new-ref: ${{ steps.newref.outputs.new_ref }}
           output: release-impact.md
+        env:
+          RELIMPACT_API_CACHE_DIR: ${{ github.workspace }}/.cache/relimpact-api-cache
 
+      # Cache save for old ref — only if not already restored
+      - name: Save API snapshot cache (old ref)
+        if: steps.cache-old.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/relimpact-api-cache
+          key: relimpact-api-${{ steps.prevtag.outputs.prev_tag }}
+
+      # Cache save for new ref — only if not already restored
+      - name: Save API snapshot cache (new ref)
+        if: steps.cache-new.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/relimpact-api-cache
+          key: relimpact-api-${{ steps.newref.outputs.new_ref }}
+
+      # Upload the release impact report
       - name: Upload Release Impact Report
         uses: actions/upload-artifact@v4
         with:
           name: release-impact-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release-impact.md
+
+      # Post release impact to PR comment
+      - name: Post Release Impact to PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
           path: release-impact.md
 ```
 
