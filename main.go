@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/hashmap-kz/relimpact/internal/loggr"
 	"os"
 
 	"github.com/hashmap-kz/relimpact/cmd"
@@ -18,6 +19,9 @@ func main() {
 		_, _ = fmt.Fprintf(os.Stderr, "Usage: relimpact --old <ref> --new <ref>")
 		os.Exit(1)
 	}
+
+	// TODO: log level (envs, CLI)
+	loggr.Init(loggr.LevelTrace, "relimpact")
 
 	if *greedy {
 		fmt.Println(cmd.CreateChangelog(".", *oldRef, *newRef))
