@@ -212,11 +212,18 @@ func (d *APIDiff) String() string {
 	return sb.String()
 }
 
+func getCacheDir() string {
+	if dir := os.Getenv("RELIMPACT_API_CACHE_DIR"); dir != "" {
+		return dir
+	}
+	return filepath.Join(".cache", "relimpact-api-cache")
+}
+
 func SnapshotAPI(dir string) map[string]APIPackage {
 	// TODO: debuglog
 
 	sha := getGitCommitSHA(dir)
-	cachePath := filepath.Join(".cache", "relimpact-api-cache", sha+".json")
+	cachePath := filepath.Join(getCacheDir(), sha+".json")
 
 	// Try to load from cache
 	if data, err := os.ReadFile(cachePath); err == nil {

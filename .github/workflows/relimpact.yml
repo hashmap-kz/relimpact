@@ -64,6 +64,8 @@ jobs:
           old-ref: ${{ steps.prevtag.outputs.prev_tag }}
           new-ref: ${{ steps.newref.outputs.new_ref }}
           output: release-impact.md
+        env:
+          RELIMPACT_API_CACHE_DIR: ${{ github.workspace }}/.cache/relimpact-api-cache
 
       # Cache save for old ref
       - name: Save API snapshot cache (old ref)
