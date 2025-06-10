@@ -42,11 +42,11 @@ relimpact --old=v1.0.0 --new=HEAD > release-impact.md
 
 ![Basic Changelog](https://github.com/hashmap-kz/assets/blob/main/relimpact/examples/basic-changelog.png)
 
-**Expanded sections:**
+**Expanded sections**
 
 ![Expanded Changelog](https://github.com/hashmap-kz/assets/blob/main/relimpact/examples/basic-changelog-expanded.png)
 
-**PR comment:**
+**PR Comment Generated**
 
 ![PR Comment](https://github.com/hashmap-kz/assets/blob/main/relimpact/examples/pr-comment.png)
 
