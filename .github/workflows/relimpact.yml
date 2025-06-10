@@ -15,6 +15,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Cache API snapshot
+        uses: actions/cache@v4
+        with:
+          path: .cache/relimpact-api-cache
+          key: relimpact-api-${{ github.sha }}
+          restore-keys: |
+            relimpact-api-
+
       - name: Determine previous tag
         id: prevtag
         run: |
@@ -50,9 +58,9 @@ jobs:
           name: release-impact-${{ github.run_id }}-${{ github.run_attempt }}
           path: release-impact.md
 
-#      - name: Post Release Impact to PR
-#        if: github.event_name == 'pull_request'
-#        uses: marocchino/sticky-pull-request-comment@v2
-#        with:
-#          recreate: true
-#          path: release-impact.md
+      - name: Post Release Impact to PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
+          path: release-impact.md
