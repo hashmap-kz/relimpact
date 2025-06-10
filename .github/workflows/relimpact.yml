@@ -38,45 +38,23 @@ jobs:
             echo "new_ref=HEAD" >> $GITHUB_OUTPUT
           fi
 
-#      # Cache restore for old ref
-#      - name: Cache API snapshot (old ref)
-#        uses: actions/cache/restore@v4
-#        id: cache-old
-#        with:
-#          path: .cache/relimpact-api-cache
-#          key: relimpact-api-${{ steps.prevtag.outputs.prev_tag }}
-#          restore-keys: |
-#            relimpact-api-
-#
-#      # Cache restore for new ref
-#      - name: Cache API snapshot (new ref)
-#        uses: actions/cache/restore@v4
-#        id: cache-new
-#        with:
-#          path: .cache/relimpact-api-cache
-#          key: relimpact-api-${{ steps.newref.outputs.new_ref }}
-#          restore-keys: |
-#            relimpact-api-
-
-#      - name: Save API snapshot cache (old ref)
-#        if: steps.cache-old.outputs.cache-hit != 'true'
-#        uses: actions/cache/save@v4
-#        with:
-#          path: .cache/relimpact-api-cache
-#          key: relimpact-api-${{ steps.prevtag.outputs.prev_tag }}
-#
-#      - name: Save API snapshot cache (new ref)
-#        if: steps.cache-new.outputs.cache-hit != 'true'
-#        uses: actions/cache/save@v4
-#        with:
-#          path: .cache/relimpact-api-cache
-#          key: relimpact-api-${{ steps.newref.outputs.new_ref }}
-
-      - name: Cache API snapshot
-        uses: actions/cache@v4
+      # Cache restore for old ref
+      - name: Cache API snapshot (old ref)
+        uses: actions/cache/restore@v4
+        id: cache-old
         with:
           path: .cache/relimpact-api-cache
-          key: relimpact-api-${{ github.sha }}
+          key: relimpact-api-${{ steps.prevtag.outputs.prev_tag }}
+          restore-keys: |
+            relimpact-api-
+
+      # Cache restore for new ref
+      - name: Cache API snapshot (new ref)
+        uses: actions/cache/restore@v4
+        id: cache-new
+        with:
+          path: .cache/relimpact-api-cache
+          key: relimpact-api-${{ steps.newref.outputs.new_ref }}
           restore-keys: |
             relimpact-api-
 
@@ -89,17 +67,17 @@ jobs:
         env:
           RELIMPACT_API_CACHE_DIR: ${{ github.workspace }}/.cache/relimpact-api-cache
 
-      # Cache save for old ref
+      # Cache save for old ref — only if not already restored
       - name: Save API snapshot cache (old ref)
-        if: always()
+        if: steps.cache-old.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: .cache/relimpact-api-cache
           key: relimpact-api-${{ steps.prevtag.outputs.prev_tag }}
 
-      # Cache save for new ref
+      # Cache save for new ref — only if not already restored
       - name: Save API snapshot cache (new ref)
-        if: always()
+        if: steps.cache-new.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: .cache/relimpact-api-cache
