@@ -3,11 +3,12 @@ package diffs
 import (
 	"bytes"
 	"fmt"
-	"github.com/hashmap-kz/relimpact/internal/loggr"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/hashmap-kz/relimpact/internal/loggr"
 )
 
 type OtherFileDiff struct {

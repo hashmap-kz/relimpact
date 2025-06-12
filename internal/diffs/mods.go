@@ -2,10 +2,11 @@ package diffs
 
 import (
 	"fmt"
-	"github.com/hashmap-kz/relimpact/internal/loggr"
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/hashmap-kz/relimpact/internal/loggr"
 
 	"golang.org/x/mod/modfile"
 )

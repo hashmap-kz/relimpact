@@ -2,9 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/hashmap-kz/relimpact/internal/loggr"
 	"strings"
 	"sync"
+
+	"github.com/hashmap-kz/relimpact/internal/loggr"
 
 	"github.com/hashmap-kz/relimpact/internal/diffs"
 	"github.com/hashmap-kz/relimpact/internal/gitutils"
