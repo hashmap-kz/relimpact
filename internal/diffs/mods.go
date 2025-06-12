@@ -2,6 +2,7 @@ package diffs
 
 import (
 	"fmt"
+	"github.com/hashmap-kz/relimpact/internal/loggr"
 	"os"
 	"sort"
 	"strings"
@@ -120,13 +121,13 @@ func DiffGoMod(oldDir, newDir string) GoModDiff {
 func parseGoMod(path string) *modfile.File {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Warning: could not read %s: %v\n", path, err)
+		loggr.Warnf("could not read %s: %v", path, err)
 		return &modfile.File{}
 	}
 
 	f, err := modfile.Parse(path, data, nil)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Warning: could not parse %s: %v\n", path, err)
+		loggr.Warnf("could not parse %s: %v", path, err)
 		return &modfile.File{}
 	}
 

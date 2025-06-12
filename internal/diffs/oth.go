@@ -3,7 +3,7 @@ package diffs
 import (
 	"bytes"
 	"fmt"
-	"os"
+	"github.com/hashmap-kz/relimpact/internal/loggr"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -99,7 +99,7 @@ func collectOtherFileChanges(workDir, oldRef, newRef string, includeExts []strin
 	cmd.Dir = workDir
 	out, err := cmd.Output()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "git diff failed: %v\n", err)
+		loggr.Errorf("git diff failed: %v", err)
 		return changes
 	}
 
