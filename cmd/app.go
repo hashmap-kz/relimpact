@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/hashmap-kz/relimpact/internal/loggr"
+
 	"github.com/hashmap-kz/relimpact/internal/diffs"
 	"github.com/hashmap-kz/relimpact/internal/gitutils"
 )
@@ -59,7 +61,7 @@ func checkout(repoDir, oldRef, newRef string) (string, string) {
 	for i := 0; i < 2; i++ {
 		res := <-worktreeCh
 		if res.err != nil {
-			panic(res.err)
+			loggr.Fatalf("worktree checkout error: %v", res.err)
 		}
 		switch res.which {
 		case "old":
@@ -67,7 +69,7 @@ func checkout(repoDir, oldRef, newRef string) (string, string) {
 		case "new":
 			tmpNew = res.path
 		default:
-			panic(fmt.Sprintf("unexpected worktree result: %v", res.which))
+			loggr.Fatalf("unexpected worktree result: %v", res.which)
 		}
 	}
 	return tmpOld, tmpNew
