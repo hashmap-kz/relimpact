@@ -5,8 +5,8 @@ go 1.24.1
 require (
 	github.com/stretchr/testify v1.10.0
 	github.com/yuin/goldmark v1.7.13
-	golang.org/x/mod v0.26.0
-	golang.org/x/tools v0.35.0
+	golang.org/x/mod v0.27.0
+	golang.org/x/tools v0.36.0
 )
 
 require (
