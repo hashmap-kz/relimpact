@@ -85,7 +85,7 @@ jobs:
 
       # Upload the release impact report
       - name: Upload Release Impact Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: release-impact-${{ github.run_id }}-${{ github.run_attempt }}
           path: release-impact.md
