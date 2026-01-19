@@ -6,7 +6,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/yuin/goldmark v1.7.16
 	golang.org/x/mod v0.32.0
-	golang.org/x/tools v0.40.0
+	golang.org/x/tools v0.41.0
 )
 
 require (
