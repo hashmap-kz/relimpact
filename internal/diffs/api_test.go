@@ -156,7 +156,7 @@ func TestAPIDiff_String(t *testing.T) {
 	assert.Contains(t, out, "- [Package Changes](#package-changes)")
 
 	// Check Summary table line for Types Removed
-	assert.Contains(t, out, "| Types Removed      |     1 |")
+	assert.Contains(t, out, "| Types    |     0 |       1 |")
 
 	// Check Breaking Changes line
 	assert.Contains(t, out, "- Types Removed: **1**")
