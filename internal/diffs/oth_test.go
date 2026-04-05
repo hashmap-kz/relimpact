@@ -32,22 +32,10 @@ func TestOtherFilesDiffSummary_String(t *testing.T) {
 		},
 	}
 
-	output := summary.String()
+	out := summary.String()
 
-	assert.Contains(t, output, "## Other Files Changes")
-	assert.Contains(t, output, "### `.sh`")
-	assert.Contains(t, output, "- Added:")
-	assert.Contains(t, output, "scripts/setup.sh")
-	assert.Contains(t, output, "- Modified:")
-	assert.Contains(t, output, "scripts/deploy.sh")
-	assert.Contains(t, output, "- Other:")
-	assert.Contains(t, output, "scripts/misc.sh")
-
-	assert.Contains(t, output, "### `.sql`")
-	assert.Contains(t, output, "- Added:")
-	assert.Contains(t, output, "migrations/001_init.sql")
-	assert.Contains(t, output, "- Removed:")
-	assert.Contains(t, output, "migrations/000_old.sql")
+	readFile := testutils.ReadTestData(t, t.Name()+".md")
+	require.Equal(t, out, string(readFile))
 }
 
 func TestDiffOtherFilesStruct_IntegrationTempGit(t *testing.T) {

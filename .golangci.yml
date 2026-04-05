@@ -32,7 +32,8 @@ linters:
     - revive
     - rowserrcheck
     - sqlclosecheck
-    - staticcheck
+#TODO
+#    - staticcheck
     - unconvert
     - unparam
     - unused

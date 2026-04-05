@@ -55,12 +55,9 @@ func (d *DocDiff) String() string {
 
 	// Summary
 	b.WriteString("#### Summary:\n")
-	b.WriteString(fmt.Sprintf("- Headings added: %d\n", len(d.HeadingsAdded)))
-	b.WriteString(fmt.Sprintf("- Headings removed: %d\n", len(d.HeadingsRemoved)))
-	b.WriteString(fmt.Sprintf("- Links added: %d\n", len(d.LinksAdded)))
-	b.WriteString(fmt.Sprintf("- Links removed: %d\n", len(d.LinksRemoved)))
-	b.WriteString(fmt.Sprintf("- Images added: %d\n", len(d.ImagesAdded)))
-	b.WriteString(fmt.Sprintf("- Images removed: %d\n", len(d.ImagesRemoved)))
+	b.WriteString(fmt.Sprintf("- Headings: added %d, removed %d\n", len(d.HeadingsAdded), len(d.HeadingsRemoved)))
+	b.WriteString(fmt.Sprintf("- Links: added %d, removed %d\n", len(d.LinksAdded), len(d.LinksRemoved)))
+	b.WriteString(fmt.Sprintf("- Images: added %d, removed %d\n", len(d.ImagesAdded), len(d.ImagesRemoved)))
 	b.WriteString(fmt.Sprintf("- Sections changed: %d\n\n", len(d.SectionWordChange)))
 
 	// Headings
