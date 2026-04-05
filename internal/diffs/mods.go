@@ -54,6 +54,17 @@ func (d *GoModDiff) String() string {
 	return b.String()
 }
 
+// TODO: use this, instead of duplicated code
+func w(b strings.Builder, s []string, h string) {
+	if len(s) > 0 {
+		b.WriteString(h)
+		for _, line := range s {
+			b.WriteString("- " + line + "\n")
+		}
+		b.WriteString("\n")
+	}
+}
+
 func DiffGoMod(oldDir, newDir string) GoModDiff {
 	oldMod := parseGoMod(oldDir + "/go.mod")
 	newMod := parseGoMod(newDir + "/go.mod")
