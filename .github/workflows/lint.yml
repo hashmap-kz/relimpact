@@ -8,7 +8,7 @@ on:
       - "release/**"
     paths-ignore:
       - ".github/**"
-      - "../../hack/docs/**"
+      - "docs/**"
       - "examples/**"
       - "hack/**"
       - "**/*.md"
@@ -20,7 +20,7 @@ on:
       - "release/**"
     paths-ignore:
       - ".github/**"
-      - "../../hack/docs/**"
+      - "docs/**"
       - "examples/**"
       - "hack/**"
       - "**/*.md"

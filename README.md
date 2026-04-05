@@ -50,7 +50,7 @@ relimpact --old=v1.0.0 --new=HEAD > release-impact.md
 
 ![PR Comment](https://github.com/hashmap-kz/assets/blob/main/relimpact/examples/pr-comment.png)
 
-**See also [docs](hack/examples) for more examples.**
+**See also [docs](./docs) for more examples.**
 
 --- 
 
