@@ -55,6 +55,8 @@ func (d *GoModDiff) String() string {
 }
 
 // TODO: use this, instead of duplicated code
+//
+//nolint:unused
 func w(b strings.Builder, s []string, h string) {
 	if len(s) > 0 {
 		b.WriteString(h)
