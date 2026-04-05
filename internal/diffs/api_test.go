@@ -147,7 +147,6 @@ func TestAPIDiff_String(t *testing.T) {
 
 	out := d.String()
 
-	readFile, err := os.ReadFile(filepath.Join("testdata", t.Name()+".md"))
-	require.NoError(t, err)
+	readFile := testutils.ReadTestData(t, t.Name()+".md")
 	require.Equal(t, out, string(readFile))
 }

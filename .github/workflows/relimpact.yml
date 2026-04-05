@@ -2,8 +2,8 @@ name: Release Impact on PR
 
 on:
   pull_request:
-#    branches: [ master ]
-#    types: [ opened, synchronize, reopened ]
+    branches: [ master ]
+    types: [ opened, synchronize, reopened ]
 
 jobs:
   release-impact:
