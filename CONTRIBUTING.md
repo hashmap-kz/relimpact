@@ -66,6 +66,9 @@ make lint
 # Run all fast unit tests. They should pass before submitting a PR.
 make test
 
+# Run important integrations tests for verification
+make test-integ
+
 # This builds the release artifacts using GoReleaser in snapshot mode (nothing is published).
 # Requires goreleaser to be installed
 make snapshot
