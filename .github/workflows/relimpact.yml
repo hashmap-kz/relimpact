@@ -40,7 +40,7 @@ jobs:
 
       # Cache restore for old ref
       - name: Cache API snapshot (old ref)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         id: cache-old
         with:
           path: .cache/relimpact-api-cache
@@ -50,7 +50,7 @@ jobs:
 
       # Cache restore for new ref
       - name: Cache API snapshot (new ref)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         id: cache-new
         with:
           path: .cache/relimpact-api-cache
@@ -70,7 +70,7 @@ jobs:
       # Cache save for old ref — only if not already restored
       - name: Save API snapshot cache (old ref)
         if: steps.cache-old.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .cache/relimpact-api-cache
           key: relimpact-api-${{ steps.prevtag.outputs.prev_tag }}
@@ -78,7 +78,7 @@ jobs:
       # Cache save for new ref — only if not already restored
       - name: Save API snapshot cache (new ref)
         if: steps.cache-new.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .cache/relimpact-api-cache
           key: relimpact-api-${{ steps.newref.outputs.new_ref }}
