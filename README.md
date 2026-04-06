@@ -11,6 +11,32 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/blob/master/go.mod#L3)
 [![Latest Release](https://img.shields.io/github/v/release/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/releases/latest)
 
+<!-- omit in toc -->
+## Table of Contents
+
+<!-- TOC tocDepth:2..3 chapterDepth:2..6 -->
+
+- [relimpact](#relimpact)
+  - [Features](#features)
+  - [Quickstart](#quickstart)
+    - [Run on a GitHub PR](#run-on-a-github-pr)
+    - [Example Output](#example-output)
+  - [GitHub Action](#github-action)
+  - [Installation](#installation)
+    - [Manual Installation](#manual-installation)
+    - [Installation script for Unix-Based OS _(requires: tar, curl, jq)_](#installation-script-for-unix-based-os-requires-tar-curl-jq)
+    - [Homebrew installation](#homebrew-installation)
+    - [Package-Based installation (suitable in CI/CD)](#package-based-installation-suitable-in-cicd)
+      - [Debian](#debian)
+      - [Alpine Linux](#alpine-linux)
+  - [Design Notes](#design-notes)
+    - [1. Go Source API Changes](#1-go-source-api-changes)
+    - [2. Markdown Docs Changes](#2-markdown-docs-changes)
+    - [3. Other Files Changes](#3-other-files-changes)
+  - [License](#license)
+
+<!-- /TOC -->
+
 ---
 
 ## Features
@@ -32,7 +58,9 @@
 
 ## Quickstart
 
-### Run on a GitHub PR:
+**[`^        back to top        ^`](#table-of-contents)**
+
+### Run on a GitHub PR
 
 ```bash
 relimpact --old=v1.0.0 --new=HEAD > release-impact.md
@@ -50,11 +78,11 @@ relimpact --old=v1.0.0 --new=HEAD > release-impact.md
 
 ![PR Comment](https://github.com/hashmap-kz/assets/blob/main/relimpact/examples/pr-comment.png)
 
-**See also [docs](./docs) for more examples.**
-
 --- 
 
 ## GitHub Action
+
+**[`^        back to top        ^`](#table-of-contents)**
 
 ```yaml
 name: Release Impact on PR
@@ -162,11 +190,7 @@ jobs:
 
 ## Installation
 
-### Docker images are available at [quay.io/hashmap_kz/relimpact](https://quay.io/repository/hashmap_kz/relimpact)
-
-```bash
-docker pull quay.io/hashmap_kz/relimpact:latest
-```
+**[`^        back to top        ^`](#table-of-contents)**
 
 ### Manual Installation
 
@@ -174,7 +198,7 @@ docker pull quay.io/hashmap_kz/relimpact:latest
    the [Releases page](https://github.com/hashmap-kz/relimpact/releases).
 2. Place the binary in your system's `PATH` (e.g., `/usr/local/bin`).
 
-### Installation script for Unix-Based OS _(requires: tar, curl, jq)_:
+### Installation script for Unix-Based OS _(requires: tar, curl, jq)_
 
 ```bash
 (
@@ -218,6 +242,8 @@ apk add relimpact_linux_amd64.apk --allow-untrusted
 ---
 
 ## Design Notes
+
+**[`^        back to top        ^`](#table-of-contents)**
 
 `relimpact` helps you understand **what really changed** between Git refs, in a way that is:
 
