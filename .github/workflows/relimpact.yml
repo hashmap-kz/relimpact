@@ -93,7 +93,7 @@ jobs:
       # Post release impact to PR comment
       - name: Post Release Impact to PR
         if: github.event_name == 'pull_request'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           recreate: true
           path: release-impact.md
