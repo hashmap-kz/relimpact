@@ -40,4 +40,7 @@ test-cov:
 
 .PHONY: test-integ
 test-integ: build
-	go test ./test/integration -tags=integration -v
+	RELIMPACT_BIN=./bin/relimpact \
+	rm -rf test/integration/bin \
+	&& mv bin/ test/integration \
+	&& go test ./test/integration -tags=integration -v
