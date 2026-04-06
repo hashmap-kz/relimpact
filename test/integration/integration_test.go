@@ -15,10 +15,14 @@ func relimpactBin() string {
 	return "./bin/relimpact"
 }
 
+func relimpactRepoURL() string {
+	return "https://github.com/hashmap-kz/relimpact.git"
+}
+
 func TestExpected_Result1(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	_, err := runCmd("git", "clone", "https://github.com/hashmap-kz/relimpact.git", tmpDir)
+	_, err := runCmd("git", "clone", relimpactRepoURL(), tmpDir)
 	require.NoError(t, err)
 
 	md, err := runCmd(relimpactBin(), "--old", "269945d", "--new", "5a0c267", "--greedy", "--dir", tmpDir)
