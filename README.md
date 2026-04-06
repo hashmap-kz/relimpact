@@ -11,6 +11,9 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/blob/master/go.mod#L3)
 [![Latest Release](https://img.shields.io/github/v/release/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/releases/latest)
 
+<!-- omit in toc -->
+## Table of Contents
+
 <!-- TOC tocDepth:2..3 chapterDepth:2..6 -->
 
 - [relimpact](#relimpact)
@@ -55,6 +58,8 @@
 
 ## Quickstart
 
+**[`^        back to top        ^`](#table-of-contents)**
+
 ### Run on a GitHub PR
 
 ```bash
@@ -76,6 +81,8 @@ relimpact --old=v1.0.0 --new=HEAD > release-impact.md
 --- 
 
 ## GitHub Action
+
+**[`^        back to top        ^`](#table-of-contents)**
 
 ```yaml
 name: Release Impact on PR
@@ -183,6 +190,8 @@ jobs:
 
 ## Installation
 
+**[`^        back to top        ^`](#table-of-contents)**
+
 ### Manual Installation
 
 1. Download the latest binary for your platform from
@@ -233,6 +242,8 @@ apk add relimpact_linux_amd64.apk --allow-untrusted
 ---
 
 ## Design Notes
+
+**[`^        back to top        ^`](#table-of-contents)**
 
 `relimpact` helps you understand **what really changed** between Git refs, in a way that is:
 
