@@ -10,7 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const relimpactBin = "./bin/relimpact"
+func relimpactBin() string {
+	// TODO: also with envs
+	return "./bin/relimpact"
+}
 
 func TestExpected_Result1(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -18,7 +21,7 @@ func TestExpected_Result1(t *testing.T) {
 	_, err := runCmd("git", "clone", "https://github.com/hashmap-kz/relimpact.git", tmpDir)
 	require.NoError(t, err)
 
-	md, err := runCmd(relimpactBin, "--old", "269945d", "--new", "5a0c267", "--greedy", "--dir", tmpDir)
+	md, err := runCmd(relimpactBin(), "--old", "269945d", "--new", "5a0c267", "--greedy", "--dir", tmpDir)
 	require.NoError(t, err)
 
 	readFile, err := os.ReadFile(filepath.Join("testdata", t.Name()+".md"))
