@@ -50,7 +50,7 @@ func FormatAllDocDiffs(diffs []DocDiff) string {
 func (d *DocDiff) String() string {
 	var b bytes.Buffer
 
-	b.WriteString(fmt.Sprintf("\n### Doc File: **`%s`**\n\n", d.File))
+	b.WriteString(fmt.Sprintf("\n### Doc File: **`%s`**\n\n", filepath.ToSlash(d.File)))
 	b.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
 
 	// Summary
