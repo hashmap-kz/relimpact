@@ -48,7 +48,7 @@
 ## Documentation Changes
 
 
-### Doc File: **`.github\ISSUE_TEMPLATE\bug_report.md`**
+### Doc File: **`.github/ISSUE_TEMPLATE/bug_report.md`**
 
 <details>
 <summary>Click to expand</summary>
@@ -69,7 +69,7 @@
 </details>
 
 
-### Doc File: **`.github\ISSUE_TEMPLATE\feature_request.md`**
+### Doc File: **`.github/ISSUE_TEMPLATE/feature_request.md`**
 
 <details>
 <summary>Click to expand</summary>
@@ -90,7 +90,7 @@
 </details>
 
 
-### Doc File: **`.github\PULL_REQUEST_TEMPLATE.md`**
+### Doc File: **`.github/PULL_REQUEST_TEMPLATE.md`**
 
 <details>
 <summary>Click to expand</summary>
@@ -270,7 +270,7 @@
 </details>
 
 
-### Doc File: **`testdata\TestAPIDiff_String.md`**
+### Doc File: **`testdata/TestAPIDiff_String.md`**
 
 <details>
 <summary>Click to expand</summary>
@@ -315,7 +315,7 @@
 </details>
 
 
-### Doc File: **`testdata\TestOtherFilesDiffSummary_String.md`**
+### Doc File: **`testdata/TestOtherFilesDiffSummary_String.md`**
 
 <details>
 <summary>Click to expand</summary>
