@@ -1,7 +1,6 @@
 package diffs
 
 import (
-	"bytes"
 	"fmt"
 	"io/fs"
 	"os"
@@ -37,7 +36,7 @@ func FormatAllDocDiffs(diffs []DocDiff) string {
 		return ""
 	}
 
-	var b bytes.Buffer
+	var b strings.Builder
 	b.WriteString("\n---\n## Documentation Changes\n\n")
 
 	for i := range diffs {
@@ -48,69 +47,39 @@ func FormatAllDocDiffs(diffs []DocDiff) string {
 }
 
 func (d *DocDiff) String() string {
-	var b bytes.Buffer
+	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("\n### Doc File: **`%s`**\n\n", filepath.ToSlash(d.File)))
+	xFprintf(&b, "\n### Doc File: **`%s`**\n\n", filepath.ToSlash(d.File))
 	b.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
 
 	// Summary
 	b.WriteString("#### Summary:\n")
-	b.WriteString(fmt.Sprintf("- Headings: added %d, removed %d\n", len(d.HeadingsAdded), len(d.HeadingsRemoved)))
-	b.WriteString(fmt.Sprintf("- Links: added %d, removed %d\n", len(d.LinksAdded), len(d.LinksRemoved)))
-	b.WriteString(fmt.Sprintf("- Images: added %d, removed %d\n", len(d.ImagesAdded), len(d.ImagesRemoved)))
-	b.WriteString(fmt.Sprintf("- Sections changed: %d\n\n", len(d.SectionWordChange)))
+	xFprintf(&b, "- Headings: added %d, removed %d\n", len(d.HeadingsAdded), len(d.HeadingsRemoved))
+	xFprintf(&b, "- Links: added %d, removed %d\n", len(d.LinksAdded), len(d.LinksRemoved))
+	xFprintf(&b, "- Images: added %d, removed %d\n", len(d.ImagesAdded), len(d.ImagesRemoved))
+	xFprintf(&b, "- Sections changed: %d\n\n", len(d.SectionWordChange))
 
-	// Headings
-	if len(d.HeadingsAdded) > 0 {
-		b.WriteString("#### Headings added:\n")
-		for _, h := range d.HeadingsAdded {
-			b.WriteString(fmt.Sprintf("- %s\n", h))
+	wr := func(label string, files []string) {
+		if len(files) == 0 {
+			return
 		}
-		b.WriteString("\n")
-	}
-	if len(d.HeadingsRemoved) > 0 {
-		b.WriteString("#### Headings removed:\n")
-		for _, h := range d.HeadingsRemoved {
-			b.WriteString(fmt.Sprintf("- %s\n", h))
+		xFprintf(&b, "#### %s:\n", label)
+		for _, f := range files {
+			xFprintf(&b, "- %s\n", f)
 		}
 		b.WriteString("\n")
 	}
 
-	// Links
-	if len(d.LinksAdded) > 0 {
-		b.WriteString("#### Links added:\n")
-		for _, l := range d.LinksAdded {
-			b.WriteString(fmt.Sprintf("- %s\n", l))
-		}
-		b.WriteString("\n")
-	}
-	if len(d.LinksRemoved) > 0 {
-		b.WriteString("#### Links removed:\n")
-		for _, l := range d.LinksRemoved {
-			b.WriteString(fmt.Sprintf("- %s\n", l))
-		}
-		b.WriteString("\n")
-	}
-
-	// Images
-	if len(d.ImagesAdded) > 0 {
-		b.WriteString("#### Images added:\n")
-		for _, img := range d.ImagesAdded {
-			b.WriteString(fmt.Sprintf("- %s\n", img))
-		}
-		b.WriteString("\n")
-	}
-	if len(d.ImagesRemoved) > 0 {
-		b.WriteString("#### Images removed:\n")
-		for _, img := range d.ImagesRemoved {
-			b.WriteString(fmt.Sprintf("- %s\n", img))
-		}
-		b.WriteString("\n")
-	}
+	wr("Headings added", d.HeadingsAdded)
+	wr("Headings removed", d.HeadingsRemoved)
+	wr("Links added", d.LinksAdded)
+	wr("Links removed", d.LinksRemoved)
+	wr("Images added", d.ImagesAdded)
+	wr("Images removed", d.ImagesRemoved)
 
 	// Section Word Count Changes
 	if len(d.SectionWordChange) > 0 {
-		b.WriteString(fmt.Sprintf("<details>\n<summary>Section Word Count Changes (%d changes)</summary>\n\n", len(d.SectionWordChange)))
+		xFprintf(&b, "<details>\n<summary>Section Word Count Changes (%d changes)</summary>\n\n", len(d.SectionWordChange))
 		for _, line := range d.SectionWordChange {
 			b.WriteString(line)
 			b.WriteString("\n")

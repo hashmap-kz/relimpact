@@ -22,29 +22,20 @@ func (d *GoModDiff) String() string {
 	b.WriteString("\n---\n## go.mod Changes\n\n")
 	b.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
 
-	if len(d.DependenciesAdded) > 0 {
-		b.WriteString("### Dependencies added\n")
-		for _, line := range d.DependenciesAdded {
-			b.WriteString("- " + line + "\n")
+	wr := func(label string, files []string) {
+		if len(files) == 0 {
+			return
+		}
+		xFprintf(&b, "### %s\n", label)
+		for _, f := range files {
+			xFprintf(&b, "- %s\n", f)
 		}
 		b.WriteString("\n")
 	}
 
-	if len(d.DependenciesRemoved) > 0 {
-		b.WriteString("### Dependencies removed\n")
-		for _, line := range d.DependenciesRemoved {
-			b.WriteString("- " + line + "\n")
-		}
-		b.WriteString("\n")
-	}
-
-	if len(d.DependenciesUpdated) > 0 {
-		b.WriteString("### Dependencies updated\n")
-		for _, line := range d.DependenciesUpdated {
-			b.WriteString("- " + line + "\n")
-		}
-		b.WriteString("\n")
-	}
+	wr("Dependencies added", d.DependenciesAdded)
+	wr("Dependencies removed", d.DependenciesRemoved)
+	wr("Dependencies updated", d.DependenciesUpdated)
 
 	if len(d.DependenciesAdded)+len(d.DependenciesRemoved)+len(d.DependenciesUpdated) == 0 {
 		b.WriteString("_No changes detected._\n\n")
@@ -52,19 +43,6 @@ func (d *GoModDiff) String() string {
 
 	b.WriteString("</details>\n\n")
 	return b.String()
-}
-
-// TODO: use this, instead of duplicated code
-//
-//nolint:unused
-func w(b strings.Builder, s []string, h string) {
-	if len(s) > 0 {
-		b.WriteString(h)
-		for _, line := range s {
-			b.WriteString("- " + line + "\n")
-		}
-		b.WriteString("\n")
-	}
 }
 
 func DiffGoMod(oldDir, newDir string) GoModDiff {
