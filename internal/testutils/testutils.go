@@ -55,7 +55,8 @@ func ReadTestData(t *testing.T, name string) []byte {
 	t.Helper()
 
 	root := ProjectRoot(t)
-	path := filepath.Join(root, "testdata", name)
+	// test/integration/testdata/TestOtherFilesDiffSummary_String.md
+	path := filepath.Join(root, "test", "integration", "testdata", name)
 
 	b, err := os.ReadFile(path)
 	if err != nil {

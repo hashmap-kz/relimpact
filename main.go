@@ -14,6 +14,7 @@ func main() {
 	oldRef := flag.String("old", "", "Old git ref")
 	newRef := flag.String("new", "", "New git ref")
 	greedy := flag.Bool("greedy", false, "Maximum concurrency")
+	dir := flag.String("dir", ".", "Git Directory")
 	flag.Parse()
 
 	if *oldRef == "" || *newRef == "" {
@@ -25,8 +26,8 @@ func main() {
 	loggr.Init(loggr.LevelTrace, "relimpact")
 
 	if *greedy {
-		fmt.Println(cmd.CreateChangelog(".", *oldRef, *newRef))
+		fmt.Println(cmd.CreateChangelog(*dir, *oldRef, *newRef))
 	} else {
-		fmt.Println(cmd.CreateChangelogSequential(".", *oldRef, *newRef))
+		fmt.Println(cmd.CreateChangelogSequential(*dir, *oldRef, *newRef))
 	}
 }
