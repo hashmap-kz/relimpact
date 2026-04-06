@@ -1,8 +1,6 @@
 package diffs
 
 import (
-	"bytes"
-	"fmt"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -28,29 +26,29 @@ func (s *OtherFilesDiffSummary) String() string {
 		return ""
 	}
 
-	var b bytes.Buffer
+	var b strings.Builder
 	b.WriteString("\n---\n## Other Files Changes\n\n")
 
+	wr := func(label string, files []string) {
+		if len(files) == 0 {
+			return
+		}
+		xFprintf(&b, "- %s:\n", label)
+		sort.Strings(files)
+		for _, f := range files {
+			xFprintf(&b, "  - %s\n", f)
+		}
+		b.WriteString("\n")
+	}
+
 	for _, d := range s.Diffs {
-		b.WriteString(fmt.Sprintf("### `%s`\n\n", d.Ext))
+		xFprintf(&b, "### `%s`\n\n", d.Ext)
 		b.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
 
-		writeSection := func(label string, files []string) {
-			if len(files) == 0 {
-				return
-			}
-			b.WriteString(fmt.Sprintf("- %s:\n", label))
-			sort.Strings(files)
-			for _, f := range files {
-				b.WriteString(fmt.Sprintf("  - %s\n", f))
-			}
-			b.WriteString("\n")
-		}
-
-		writeSection("Added", d.Added)
-		writeSection("Modified", d.Modified)
-		writeSection("Removed", d.Removed)
-		writeSection("Other", d.Other)
+		wr("Added", d.Added)
+		wr("Modified", d.Modified)
+		wr("Removed", d.Removed)
+		wr("Other", d.Other)
 
 		b.WriteString("</details>\n\n")
 	}

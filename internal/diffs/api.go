@@ -1,7 +1,6 @@
 package diffs
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"go/token"
@@ -97,9 +96,9 @@ func (d *APIDiff) String() string {
 	sb.WriteString("| Kind     | Added | Removed |\n")
 	sb.WriteString("|----------|------:|--------:|\n")
 	for _, s := range summary {
-		sb.WriteString(fmt.Sprintf("| %-8s | %5d | %7d |\n", s.Name, s.Added, s.Removed))
+		xFprintf(&sb, "| %-8s | %5d | %7d |\n", s.Name, s.Added, s.Removed)
 	}
-	sb.WriteString(fmt.Sprintf("| %-8s | %5d | %7d |\n", "Total", totalAdded, totalRemoved))
+	xFprintf(&sb, "| %-8s | %5d | %7d |\n", "Total", totalAdded, totalRemoved)
 
 	// Breaking Changes section
 	sb.WriteString("\n### Breaking Changes\n\n")
@@ -108,7 +107,7 @@ func (d *APIDiff) String() string {
 	} else {
 		for _, s := range summary {
 			if s.Removed > 0 {
-				sb.WriteString(fmt.Sprintf("- %s Removed: **%d**\n", s.Name, s.Removed))
+				xFprintf(&sb, "- %s Removed: **%d**\n", s.Name, s.Removed)
 			}
 		}
 	}
@@ -118,11 +117,11 @@ func (d *APIDiff) String() string {
 		if len(packages) == 0 {
 			return
 		}
-		sb.WriteString(fmt.Sprintf("\n### %s\n\n", prefix))
+		xFprintf(&sb, "\n### %s\n\n", prefix)
 		sorted := append([]string{}, packages...)
 		sort.Strings(sorted)
 		for _, pkg := range sorted {
-			sb.WriteString(fmt.Sprintf("- `%s`\n", pkg))
+			xFprintf(&sb, "- `%s`\n", pkg)
 		}
 	}
 
@@ -181,7 +180,7 @@ func (d *APIDiff) String() string {
 		sort.Strings(pkgs)
 
 		for _, pkg := range pkgs {
-			sb.WriteString(fmt.Sprintf("\n#### Package `%s`\n\n", pkg))
+			xFprintf(&sb, "\n#### Package `%s`\n\n", pkg)
 			sb.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
 
 			labels := make([]string, 0, len(grouped[pkg]))
@@ -191,11 +190,11 @@ func (d *APIDiff) String() string {
 			sort.Strings(labels)
 
 			for _, label := range labels {
-				sb.WriteString(fmt.Sprintf("- %s:\n", label))
+				xFprintf(&sb, "- %s:\n", label)
 				xs := grouped[pkg][label]
 				sort.Strings(xs)
 				for _, x := range xs {
-					sb.WriteString(fmt.Sprintf("    - %s\n", x))
+					xFprintf(&sb, "    - %s\n", x)
 				}
 			}
 
@@ -354,7 +353,7 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 }
 
 func signatureString(sig *types.Signature) string {
-	var b bytes.Buffer
+	var b strings.Builder
 	b.WriteString("(")
 	for i := 0; i < sig.Params().Len(); i++ {
 		if i > 0 {
