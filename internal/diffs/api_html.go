@@ -177,7 +177,7 @@ func (d *APIDiff) HTML(meta ReportMetadata) string {
 		meta.Now = time.Now()
 	}
 
-	changes := d.collectSymbolChanges()
+	changes := filterHTMLNoise(d.collectSymbolChanges())
 	pkgSummaries := summarizeByPackage(changes)
 	summary := summarizeOverall(changes, len(pkgSummaries))
 
@@ -213,6 +213,20 @@ func (d *APIDiff) HTML(meta ReportMetadata) string {
 		return "<!-- template error: " + err.Error() + " -->"
 	}
 	return sb.String()
+}
+
+func filterHTMLNoise(changes []SymbolChange) []SymbolChange {
+	// A package add/remove without exported symbol changes is usually noise in the
+	// HTML report: it creates an empty-looking section with only "Packages · 1".
+	// Keep the report focused on API surface that callers can actually use.
+	out := changes[:0]
+	for _, ch := range changes {
+		if ch.Kind == "Package" {
+			continue
+		}
+		out = append(out, ch)
+	}
+	return out
 }
 
 // -----------------------------------------------------------------------
