@@ -27,11 +27,11 @@ install: build
 
 .PHONY: test
 test:
-	go test -v -cover ./...
+	go test -v -race -cover ./...
 
 .PHONY: snapshot
 snapshot:
-	goreleaser release --skip sign --skip publish --snapshot --clean
+	GORELEASER_FORCE_TOKEN=github goreleaser release --skip sign --skip publish --snapshot --clean
 
 .PHONY: test-cov
 test-cov:
