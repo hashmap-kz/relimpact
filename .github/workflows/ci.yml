@@ -3,31 +3,26 @@ name: CI
 
 on:
   push:
-    branches:
+    branches: &branches
       - "master"
       - "release/**"
-    paths-ignore:
+    paths-ignore: &paths-ignore
       - ".github/**"
+      - ".run/**"
+      - ".vscode/**"
       - "docs/**"
       - "examples/**"
-      - "testdata/**"
+      - "charts/**"
       - "hack/**"
+      - "ui/static/**"
       - "**/*.md"
       - "**/*.gitignore"
       - "**/*.gitattributes"
+      - "Makefile"
+      - ".golangci.yml"
   pull_request:
-    branches:
-      - "master"
-      - "release/**"
-    paths-ignore:
-      - ".github/**"
-      - "docs/**"
-      - "examples/**"
-      - "testdata/**"
-      - "hack/**"
-      - "**/*.md"
-      - "**/*.gitignore"
-      - "**/*.gitattributes"
+    branches: *branches
+    paths-ignore: *paths-ignore
   workflow_dispatch:
 
 jobs:
@@ -55,3 +50,12 @@ jobs:
       - name: Run unit tests
         run: go test -v -race ./...
         shell: bash
+
+      # Run goreleaser to be sure that 'everything is always ready to release'
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          install-only: true
+
+      - name: Run GoReleaser (snapshot)
+        run: make snapshot

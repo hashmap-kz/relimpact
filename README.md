@@ -19,11 +19,19 @@ It answers one release question:
 
 ---
 
-## Report
+## Report Formats
+
+**Breaking Changes**
 
 ![Breaking Changes](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/01-relimpact-breaking-changes.png)
 
+**New Features**
+
 ![New Features](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/02-relimpact-new-features.png)
+
+**PR comment**
+
+![Markdown Format](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/04-relimpact-markdown.png)
 
 ## Why
 
@@ -93,71 +101,6 @@ Use maximum concurrency:
 
 ```bash
 relimpact --old=v1.0.0 --new=HEAD --greedy
-```
-
-## Output
-
-Markdown is optimized for PR comments and release notes.
-
-HTML is optimized for CI artifacts and release review. It includes:
-
-- compatibility verdict
-- summary cards
-- breaking changes first
-- new API below
-- package navigation
-- clean signature diffs
-- compact groups for added/removed symbols
-- readable struct and interface diffs
-
-## Example
-
-```diff
-## Breaking changes
-
-### github.com/acme/project/config
-
-#### Changed signatures
-
-- func Load(path string) *Config
-+ func Load(path string) (*Config, error)
-
-#### Removed API
-
-Functions
-
-- MustLoad(string) *Config
-
-Struct fields
-
-type Config struct {
--   LegacyMode bool
-}
-
-## New API
-
-### github.com/acme/project/config
-
-#### Added API
-
-Functions
-
-+ FromEnv(string) (*Config, error)
-
-Struct fields
-
-type Config struct {
-+   Retention RetentionConfig
-}
-```
-
-## Cache
-
-`relimpact` can cache API snapshots between CI runs.
-
-```bash
-RELIMPACT_API_CACHE_DIR=.cache/relimpact-api-cache \
-relimpact --old=v1.0.0 --new=HEAD --format=html > api-report.html
 ```
 
 ## GitHub Actions
