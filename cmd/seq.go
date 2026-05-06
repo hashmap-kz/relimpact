@@ -10,6 +10,7 @@ func CreateChangelogSequential(repoDir, oldRef, newRef string) string {
 }
 
 func CreateAPIReportSequential(repoDir, oldRef, newRef string, format ReportFormat) string {
+	// Checkout old/new worktrees.
 	tmpOld := gitutils.CheckoutWorktree(repoDir, oldRef)
 	defer gitutils.CleanupWorktree(repoDir, tmpOld)
 

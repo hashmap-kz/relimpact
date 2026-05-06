@@ -27,6 +27,13 @@ type apiChange struct {
 	Status  string
 }
 
+type apiFieldChange struct {
+	Owner  string
+	Name   string
+	Type   string
+	Status string
+}
+
 type apiPackageSummary struct {
 	Package  string
 	Breaking int
@@ -99,45 +106,76 @@ func (d *APIDiff) HTML(meta APIReportMeta) string {
 }
 
 func (d *APIDiff) apiChanges() []apiChange {
-	var raw []apiChange
+	var changes []apiChange
+
 	addPkgChanges := func(status string, xs []string) {
 		for _, x := range xs {
-			raw = append(raw, apiChange{Package: x, Kind: "Package", Name: shortPackage(x), Old: x, New: x, Status: status})
+			ch := apiChange{
+				Package: x,
+				Kind:    "Package",
+				Name:    shortPackage(x),
+				Old:     x,
+				New:     x,
+				Status:  status,
+			}
+			if status == "added" {
+				ch.Old = ""
+			} else {
+				ch.New = ""
+			}
+			changes = append(changes, ch)
 		}
 	}
+
 	addChanges := func(status, kind string, xs []APIDiffRes) {
 		for _, x := range xs {
 			cleanKind := cleanAPILabel(kind, x.Label)
 			scope := apiScope(x.Label)
 			name := apiSymbolName(x.X)
-			raw = append(raw, apiChange{
+			value := x.X
+
+			ch := apiChange{
 				Package: x.Path,
 				Kind:    cleanKind,
 				Scope:   scope,
 				Name:    displayAPIName(cleanKind, scope, name),
-				Old:     x.X,
-				New:     x.X,
+				Old:     value,
+				New:     value,
 				Status:  status,
-			})
+			}
+
+			if status == "added" {
+				ch.Old = ""
+			} else {
+				ch.New = ""
+			}
+
+			changes = append(changes, ch)
 		}
 	}
 
 	addPkgChanges("added", d.PackagesAdded)
 	addPkgChanges("removed", d.PackagesRemoved)
+
 	addChanges("added", "Func", d.FuncsAdded)
 	addChanges("removed", "Func", d.FuncsRemoved)
+
 	addChanges("added", "Var", d.VarsAdded)
 	addChanges("removed", "Var", d.VarsRemoved)
+
 	addChanges("added", "Const", d.ConstsAdded)
 	addChanges("removed", "Const", d.ConstsRemoved)
+
 	addChanges("added", "Type", d.TypesAdded)
 	addChanges("removed", "Type", d.TypesRemoved)
+
 	addChanges("added", "Field", d.FieldsAdded)
 	addChanges("removed", "Field", d.FieldsRemoved)
+
 	addChanges("added", "Method", d.MethodsAdded)
 	addChanges("removed", "Method", d.MethodsRemoved)
 
-	return compactAPIChanges(raw)
+	return compactAPIChanges(changes)
 }
 
 func compactAPIChanges(raw []apiChange) []apiChange {
@@ -364,16 +402,13 @@ func writeStatusGroup(w io.Writer, title string, changes []apiChange, status str
 	}
 
 	xFprintf(w, "<div class=\"change-group\"><div class=\"group-title\">%s</div>\n", esc(title))
-
 	if status == "changed" {
 		for _, ch := range group {
 			writeAPIChangeCard(w, ch)
 		}
-		xFprintf(w, "</div>\n")
-		return
+	} else {
+		writeCompactAPIGroup(w, group, status)
 	}
-
-	writeCompactAPIGroup(w, group, status)
 	xFprintf(w, "</div>\n")
 }
 
@@ -393,6 +428,10 @@ func writeCompactAPIGroup(w io.Writer, changes []apiChange, status string) {
 			return xs[i].Name < xs[j].Name
 		})
 
+		if kind == "Field" {
+			writeStructFieldDiffs(w, xs, status)
+			continue
+		}
 		writeCompactKindGroup(w, kind, xs, status)
 	}
 }
@@ -404,9 +443,7 @@ func writeCompactKindGroup(w io.Writer, kind string, changes []apiChange, status
 	}
 
 	xFprintf(w, "<section class=\"compact-kind\">\n")
-	xFprintf(w, "<div class=\"compact-kind-head\"><span>%s</span><strong>%d</strong></div>\n",
-		esc(pluralKind(kind)), len(changes))
-
+	xFprintf(w, "<div class=\"compact-kind-head\"><span>%s</span><strong>%d</strong></div>\n", esc(pluralKind(kind)), len(changes))
 	xFprintf(w, "<div class=\"compact-list %s\">\n", esc(badgeClass))
 	for _, ch := range changes {
 		writeCompactChange(w, ch)
@@ -416,80 +453,52 @@ func writeCompactKindGroup(w io.Writer, kind string, changes []apiChange, status
 }
 
 func writeCompactChange(w io.Writer, ch apiChange) {
-	value := formatAPIValue(ch.Kind, ch.Scope, firstNonEmpty(ch.New, ch.Old))
-	display := compactDisplayValue(ch, value)
-
 	xFprintf(w, "<div class=\"compact-row\">\n")
-	xFprintf(w, "<code>%s</code>\n", esc(display))
 
-	if shouldShowCompactDetail(ch, value, display) {
-		xFprintf(w, "<pre>%s</pre>\n", esc(value))
-	}
-
-	xFprintf(w, "</div>\n")
-}
-
-func compactDisplayValue(ch apiChange, formatted string) string {
 	switch ch.Kind {
-	case "Type", "Var", "Const", "Package":
-		return ch.Name
-	case "Field":
-		if ch.Scope != "" {
-			return ch.Scope + "." + ch.Name
-		}
-		return ch.Name
-	case "Method":
-		if ch.Scope != "" {
-			return ch.Scope + "." + ch.Name + "(...)"
-		}
-		return ch.Name + "(...)"
 	case "Func":
-		return ch.Name + "(...)"
-	default:
-		return ch.Name
-	}
-}
-
-func shouldShowCompactDetail(ch apiChange, formatted, display string) bool {
-	switch ch.Kind {
-	case "Func", "Method", "Field", "Var", "Const":
-		return strings.TrimSpace(formatted) != "" && strings.TrimSpace(formatted) != display
-	default:
-		return false
-	}
-}
-
-func apiKindOrder() []string {
-	return []string{
-		"Package",
-		"Type",
-		"Func",
-		"Method",
-		"Field",
-		"Var",
-		"Const",
-	}
-}
-
-func pluralKind(kind string) string {
-	switch kind {
-	case "Package":
-		return "Packages"
-	case "Type":
-		return "Types"
-	case "Func":
-		return "Functions"
+		xFprintf(w, "<code>%s</code>", esc(compactFunc(ch)))
 	case "Method":
-		return "Methods"
-	case "Field":
-		return "Fields"
-	case "Var":
-		return "Variables"
-	case "Const":
-		return "Constants"
+		xFprintf(w, "<code>%s</code>", esc(compactMethod(ch)))
+	case "Var", "Const":
+		name, typ := compactTypedSymbol(ch)
+		xFprintf(w, "<code>%s</code>", esc(name))
+		if typ != "" {
+			xFprintf(w, "<span class=\"compact-type\">%s</span>", esc(typ))
+		}
 	default:
-		return kind
+		xFprintf(w, "<code>%s</code>", esc(compactDisplayValue(ch, "")))
 	}
+
+	xFprintf(w, "\n</div>\n")
+}
+
+func writeStructFieldDiffs(w io.Writer, changes []apiChange, status string) {
+	grouped := groupFieldChanges(changes, status)
+	if len(grouped) == 0 {
+		writeCompactKindGroup(w, "Field", changes, status)
+		return
+	}
+
+	owners := make([]string, 0, len(grouped))
+	for owner := range grouped {
+		owners = append(owners, owner)
+	}
+	sort.Strings(owners)
+
+	xFprintf(w, "<section class=\"struct-diff-group\">\n")
+	xFprintf(w, "<div class=\"compact-kind-head\"><span>Struct fields</span><strong>%d</strong></div>\n", len(changes))
+	for _, owner := range owners {
+		writeStructFieldDiff(w, owner, grouped[owner], status)
+	}
+	xFprintf(w, "</section>\n")
+}
+
+func writeStructFieldDiff(w io.Writer, owner string, fields []apiFieldChange, status string) {
+	xFprintf(w, "<article class=\"struct-diff\">\n")
+	xFprintf(w, "<div class=\"struct-diff-title\">type %s struct</div>\n", esc(owner))
+	xFprintf(w, "<pre class=\"struct-pre\">%s</pre>\n", esc(formatStructFieldDiff(owner, fields, status)))
+	xFprintf(w, "</article>\n")
 }
 
 func writeAPIChangeCard(w io.Writer, ch apiChange) {
@@ -524,6 +533,83 @@ func writeAPIChangeCard(w io.Writer, ch apiChange) {
 
 func writeSignatureBlock(w io.Writer, label, value string) {
 	xFprintf(w, "<div class=\"sig-label\">%s</div><pre>%s</pre>\n", esc(label), esc(value))
+}
+
+func formatStructFieldDiff(owner string, fields []apiFieldChange, status string) string {
+	width := 0
+	for _, f := range fields {
+		if len(f.Name) > width {
+			width = len(f.Name)
+		}
+	}
+
+	prefix := "+"
+	if status == "removed" {
+		prefix = "-"
+	}
+
+	var b strings.Builder
+	b.WriteString("type ")
+	b.WriteString(owner)
+	b.WriteString(" struct {\n")
+	for _, f := range fields {
+		b.WriteString(prefix)
+		b.WriteString("   ")
+		b.WriteString(f.Name)
+		padding := width - len(f.Name) + 1
+		if padding < 1 {
+			padding = 1
+		}
+		b.WriteString(strings.Repeat(" ", padding))
+		b.WriteString(f.Type)
+		b.WriteString("\n")
+	}
+	b.WriteString("}")
+	return b.String()
+}
+
+func fieldChangeFromAPIChange(ch apiChange) (apiFieldChange, bool) {
+	raw := shortenGoTypes(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
+	if raw == "" {
+		return apiFieldChange{}, false
+	}
+
+	parts := strings.Fields(raw)
+	if len(parts) == 0 {
+		return apiFieldChange{}, false
+	}
+
+	fullName := parts[0]
+	fieldType := strings.TrimSpace(strings.TrimPrefix(raw, fullName))
+	dot := strings.LastIndex(fullName, ".")
+	if dot < 0 || dot+1 >= len(fullName) {
+		if ch.Scope == "" || ch.Name == "" {
+			return apiFieldChange{}, false
+		}
+		return apiFieldChange{Owner: ch.Scope, Name: ch.Name, Type: fieldType, Status: ch.Status}, true
+	}
+
+	return apiFieldChange{Owner: fullName[:dot], Name: fullName[dot+1:], Type: fieldType, Status: ch.Status}, true
+}
+
+func groupFieldChanges(changes []apiChange, status string) map[string][]apiFieldChange {
+	out := make(map[string][]apiFieldChange)
+	for _, ch := range changes {
+		if ch.Status != status || ch.Kind != "Field" {
+			continue
+		}
+		f, ok := fieldChangeFromAPIChange(ch)
+		if !ok {
+			continue
+		}
+		out[f.Owner] = append(out[f.Owner], f)
+	}
+	for owner := range out {
+		sort.Slice(out[owner], func(i, j int) bool {
+			return out[owner][i].Name < out[owner][j].Name
+		})
+	}
+	return out
 }
 
 func formatAPIValue(kind, scope, raw string) string {
@@ -607,14 +693,11 @@ func formatCallable(prefix, scope, name, raw string) string {
 }
 
 func formatField(scope, raw string) string {
-	if scope == "" {
-		return raw
+	name, typ := compactField(apiChange{Kind: "Field", Scope: scope, Name: apiSymbolName(raw), New: raw})
+	if typ == "" {
+		return name
 	}
-	parts := strings.SplitN(raw, " ", 2)
-	if len(parts) != 2 {
-		return scope + "." + raw
-	}
-	return scope + "." + parts[0] + " " + parts[1]
+	return name + " " + typ
 }
 
 func splitFirstParen(s string) (inside, rest string, ok bool) {
@@ -687,6 +770,155 @@ func shortenGoTypes(s string) string {
 		}
 		return pkg + "." + ident
 	})
+}
+
+func compactDisplayValue(ch apiChange, _ string) string {
+	switch ch.Kind {
+	case "Type", "Package":
+		return ch.Name
+	case "Var", "Const":
+		name, _ := compactTypedSymbol(ch)
+		return name
+	case "Field":
+		name, _ := compactField(ch)
+		return name
+	case "Method":
+		return compactMethod(ch)
+	case "Func":
+		return compactFunc(ch)
+	default:
+		return ch.Name
+	}
+}
+
+func compactField(ch apiChange) (name string, typ string) {
+	raw := shortenGoTypes(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
+	parts := strings.Fields(raw)
+	if len(parts) == 0 {
+		return compactScopedName(ch.Scope, ch.Name), ""
+	}
+	fieldName := parts[0]
+	fieldType := strings.TrimSpace(strings.TrimPrefix(raw, fieldName))
+	if strings.Contains(fieldName, ".") {
+		return fieldName, fieldType
+	}
+	return compactScopedName(ch.Scope, fieldName), fieldType
+}
+
+func compactTypedSymbol(ch apiChange) (name string, typ string) {
+	raw := shortenGoTypes(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
+	parts := strings.Fields(raw)
+	if len(parts) == 0 {
+		return ch.Name, ""
+	}
+	name = parts[0]
+	typ = strings.TrimSpace(strings.TrimPrefix(raw, name))
+	return name, typ
+}
+
+func compactFunc(ch apiChange) string {
+	raw := shortenGoTypes(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
+	name := apiSymbolName(raw)
+	if name == "" || name == "unknown" {
+		name = ch.Name
+	}
+	params, results := compactCallableParts(raw)
+	if params == "" && results == "" {
+		return name + "(...)"
+	}
+	return name + "(" + params + ")" + results
+}
+
+func compactMethod(ch apiChange) string {
+	raw := shortenGoTypes(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
+	name := apiSymbolName(raw)
+	if name == "" || name == "unknown" {
+		name = ch.Name
+	}
+	fullName := name
+	if ch.Scope != "" && !strings.Contains(name, ".") {
+		fullName = ch.Scope + "." + name
+	}
+	params, results := compactCallableParts(raw)
+	if params == "" && results == "" {
+		return fullName + "(...)"
+	}
+	return fullName + "(" + params + ")" + results
+}
+
+func compactScopedName(scope, name string) string {
+	name = strings.TrimSpace(name)
+	scope = strings.TrimSpace(scope)
+	if scope == "" || name == "" {
+		return name
+	}
+	if strings.HasPrefix(name, scope+".") {
+		return name
+	}
+	return scope + "." + name
+}
+
+func compactCallableParts(raw string) (params string, results string) {
+	idx := strings.Index(raw, "(")
+	if idx < 0 {
+		return "", ""
+	}
+	sig := raw[idx:]
+	paramText, rest, ok := splitFirstParen(sig)
+	if !ok {
+		return "", ""
+	}
+	params = compactParamList(splitTopLevel(paramText))
+	rest = strings.TrimSpace(rest)
+	if !strings.HasPrefix(rest, "->") {
+		return params, ""
+	}
+	resRaw := strings.TrimSpace(strings.TrimPrefix(rest, "->"))
+	if !strings.HasPrefix(resRaw, "(") {
+		return params, " " + resRaw
+	}
+	resultText, _, ok := splitFirstParen(resRaw)
+	if !ok {
+		return params, ""
+	}
+	resultParts := splitTopLevel(resultText)
+	switch len(resultParts) {
+	case 0:
+		return params, ""
+	case 1:
+		return params, " " + resultParts[0]
+	default:
+		return params, " (" + strings.Join(resultParts, ", ") + ")"
+	}
+}
+
+func compactParamList(parts []string) string {
+	if len(parts) == 0 {
+		return ""
+	}
+	const maxInline = 72
+	s := strings.Join(parts, ", ")
+	if len(s) <= maxInline {
+		return s
+	}
+	var short []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		fields := strings.Fields(p)
+		if len(fields) >= 2 {
+			short = append(short, fields[len(fields)-1])
+		} else {
+			short = append(short, p)
+		}
+	}
+	s = strings.Join(short, ", ")
+	if len(s) <= maxInline {
+		return s
+	}
+	return "..."
 }
 
 func apiReportCSS() string {
@@ -786,10 +1018,7 @@ h1 {
   font-size: 12px;
   white-space: nowrap;
 }
-.empty-nav {
-  color: var(--muted);
-  font-size: 14px;
-}
+.empty-nav { color: var(--muted); font-size: 14px; }
 .verdict {
   margin-top: 26px;
   border-radius: 18px;
@@ -798,24 +1027,10 @@ h1 {
   background: var(--panel);
   box-shadow: var(--shadow);
 }
-.verdict-breaking {
-  background: var(--red-bg);
-  border-color: #fecaca;
-  color: #7f1d1d;
-}
-.verdict-ok {
-  background: var(--green-bg);
-  border-color: #bbf7d0;
-  color: #064e3b;
-}
-.verdict-title {
-  font-size: 17px;
-  font-weight: 850;
-}
-.verdict-text {
-  margin-top: 4px;
-  font-size: 14px;
-}
+.verdict-breaking { background: var(--red-bg); border-color: #fecaca; color: #7f1d1d; }
+.verdict-ok { background: var(--green-bg); border-color: #bbf7d0; color: #064e3b; }
+.verdict-title { font-size: 17px; font-weight: 850; }
+.verdict-text { margin-top: 4px; font-size: 14px; }
 .cards {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -829,21 +1044,9 @@ h1 {
   padding: 16px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
-.num {
-  font-size: 32px;
-  line-height: 1;
-  font-weight: 850;
-  letter-spacing: -0.05em;
-}
-.label {
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: 8px;
-}
-.pkg {
-  margin-top: 34px;
-  scroll-margin-top: 24px;
-}
+.num { font-size: 32px; line-height: 1; font-weight: 850; letter-spacing: -0.05em; }
+.label { color: var(--muted); font-size: 13px; margin-top: 8px; }
+.pkg { margin-top: 34px; scroll-margin-top: 24px; }
 .pkg-head {
   display: flex;
   justify-content: space-between;
@@ -851,23 +1054,14 @@ h1 {
   align-items: flex-end;
   margin-bottom: 18px;
 }
-.pkg h2 {
-  margin: 0;
-  font-size: 23px;
-  letter-spacing: -0.03em;
-}
+.pkg h2 { margin: 0; font-size: 23px; letter-spacing: -0.03em; }
 .pkg-full {
   margin-top: 5px;
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
 }
-.pkg-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
-}
+.pkg-counts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .pkg-counts span {
   border: 1px solid var(--border);
   background: var(--panel);
@@ -909,11 +1103,7 @@ h1 {
   letter-spacing: 0.08em;
   margin-bottom: 5px;
 }
-.symbol {
-  font-size: 16px;
-  font-weight: 850;
-  letter-spacing: -0.02em;
-}
+.symbol { font-size: 16px; font-weight: 850; letter-spacing: -0.02em; }
 .badge {
   display: inline-flex;
   align-items: center;
@@ -925,18 +1115,9 @@ h1 {
   letter-spacing: 0.05em;
   white-space: nowrap;
 }
-.badge-breaking {
-  background: var(--red-bg);
-  color: var(--red);
-}
-.badge-added {
-  background: var(--green-bg);
-  color: var(--green);
-}
-.badge-changed {
-  background: var(--amber-bg);
-  color: var(--amber);
-}
+.badge-breaking { background: var(--red-bg); color: var(--red); }
+.badge-added { background: var(--green-bg); color: var(--green); }
+.badge-changed { background: var(--amber-bg); color: var(--amber); }
 .sig-label {
   color: var(--muted);
   font-size: 11px;
@@ -957,15 +1138,8 @@ pre {
   font-size: 13px;
   line-height: 1.55;
 }
-.empty {
-  margin-top: 28px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 24px;
-  color: var(--muted);
-}
-.compact-kind {
+.compact-kind,
+.struct-diff-group {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 18px;
@@ -973,7 +1147,6 @@ pre {
   overflow: hidden;
   box-shadow: var(--shadow);
 }
-
 .compact-kind-head {
   display: flex;
   align-items: center;
@@ -983,51 +1156,31 @@ pre {
   background: var(--soft);
   border-bottom: 1px solid var(--border);
 }
-
-.compact-kind-head span {
-  font-size: 13px;
-  font-weight: 850;
-  letter-spacing: 0.02em;
-}
-
-.compact-kind-head strong {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 850;
-}
-
-.compact-list {
-  padding: 8px;
-}
-
+.compact-kind-head span { font-size: 13px; font-weight: 850; letter-spacing: 0.02em; }
+.compact-kind-head strong { color: var(--muted); font-size: 12px; font-weight: 850; }
+.compact-list { padding: 8px; }
 .compact-row {
-  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: baseline;
+  gap: 16px;
+  padding: 9px 10px;
   border-radius: 12px;
 }
-
-.compact-row + .compact-row {
-  margin-top: 2px;
-}
-
-.compact-row:hover {
-  background: #f8fafc;
-}
-
-.compact-row code {
+.compact-row + .compact-row { margin-top: 2px; }
+.compact-row:hover { background: #f8fafc; }
+.compact-row code,
+.struct-diff-title {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 13px;
-  color: var(--text);
-  word-break: break-word;
 }
-
-.compact-row pre {
-  margin-top: 8px;
-  padding: 10px 12px;
+.compact-row code { font-size: 13px; color: var(--text); word-break: break-word; }
+.compact-type {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
-  border-radius: 10px;
-  box-shadow: none;
+  text-align: right;
+  white-space: nowrap;
 }
-
 .compact-added .compact-row code::before {
   content: "+";
   display: inline-flex;
@@ -1038,7 +1191,6 @@ pre {
   color: var(--green);
   font-weight: 900;
 }
-
 .compact-removed .compact-row code::before {
   content: "−";
   display: inline-flex;
@@ -1049,7 +1201,23 @@ pre {
   color: var(--red);
   font-weight: 900;
 }
-  
+.struct-diff { padding: 14px 16px 16px; }
+.struct-diff + .struct-diff { border-top: 1px solid var(--border); }
+.struct-diff-title {
+  font-size: 13px;
+  font-weight: 850;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+.struct-pre { margin: 0; padding: 14px; }
+.empty {
+  margin-top: 28px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 24px;
+  color: var(--muted);
+}
 @media (max-width: 900px) {
   .layout { display: block; }
   aside { position: static; width: auto; height: auto; }
@@ -1057,6 +1225,8 @@ pre {
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pkg-head { display: block; }
   .pkg-counts { justify-content: flex-start; margin-top: 10px; }
+  .compact-row { grid-template-columns: 1fr; gap: 6px; }
+  .compact-type { text-align: left; white-space: normal; }
 }
 </style>
 `
@@ -1100,19 +1270,25 @@ func apiSymbolName(x string) string {
 		return x[:idx]
 	}
 	if idx := strings.IndexByte(x, ' '); idx > 0 {
-		return x[:idx]
+		name := x[:idx]
+		if dot := strings.LastIndex(name, "."); dot >= 0 && dot+1 < len(name) {
+			return name[dot+1:]
+		}
+		return name
+	}
+	if dot := strings.LastIndex(x, "."); dot >= 0 && dot+1 < len(x) {
+		return x[dot+1:]
 	}
 	return x
 }
 
 func displayAPIName(kind, scope, name string) string {
-	if scope == "" {
+	switch kind {
+	case "Field", "Method":
+		return compactScopedName(scope, name)
+	default:
 		return name
 	}
-	if kind == "Field" || kind == "Method" {
-		return scope + "." + name
-	}
-	return name
 }
 
 func shortPackage(pkg string) string {
@@ -1170,6 +1346,31 @@ func kindRank(kind string) int {
 		return 6
 	default:
 		return 7
+	}
+}
+
+func apiKindOrder() []string {
+	return []string{"Package", "Type", "Func", "Method", "Field", "Var", "Const"}
+}
+
+func pluralKind(kind string) string {
+	switch kind {
+	case "Package":
+		return "Packages"
+	case "Type":
+		return "Types"
+	case "Func":
+		return "Functions"
+	case "Method":
+		return "Methods"
+	case "Field":
+		return "Fields"
+	case "Var":
+		return "Variables"
+	case "Const":
+		return "Constants"
+	default:
+		return kind
 	}
 }
 

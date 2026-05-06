@@ -22,12 +22,15 @@ func CreateChangelog(repoDir, oldRef, newRef string) string {
 }
 
 func CreateAPIReport(repoDir, oldRef, newRef string, format ReportFormat) string {
+	// 1. Concurrent checkout old/new worktrees.
 	tmpOld, tmpNew := checkout(repoDir, oldRef, newRef)
 	defer gitutils.CleanupWorktree(repoDir, tmpOld)
 	defer gitutils.CleanupWorktree(repoDir, tmpNew)
 
+	// 2. Concurrent API snapshots.
 	oldAPI, newAPI := snap(tmpOld, tmpNew)
 
+	// 3. Render API-only report.
 	apiDiff := diffs.DiffAPI(oldAPI, newAPI)
 	return renderAPIReport(apiDiff, repoDir, oldRef, newRef, format)
 }

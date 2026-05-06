@@ -26,11 +26,13 @@ func main() {
 	reportFormat := cmd.ReportFormat(strings.ToLower(strings.TrimSpace(*format)))
 	switch reportFormat {
 	case cmd.ReportFormatMarkdown, cmd.ReportFormatHTML:
+		// ok
 	default:
 		_, _ = fmt.Fprintf(os.Stderr, "unsupported format %q: use markdown or html\n", *format)
 		os.Exit(1)
 	}
 
+	// TODO: log level (envs, CLI)
 	loggr.Init(loggr.LevelTrace, "relimpact")
 
 	if *greedy {
