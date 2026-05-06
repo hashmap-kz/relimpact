@@ -158,7 +158,7 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 				}
 				apkg.Vars = append(apkg.Vars, name+" "+o.Type().String())
 			case *types.Const:
-				apkg.Consts = append(apkg.Consts, name+" "+o.Type().String())
+				apkg.Consts = append(apkg.Consts, name+" "+o.Type().String()+" = "+o.Val().String())
 			case *types.TypeName:
 				t := o.Type().Underlying()
 				atype := APIType{}

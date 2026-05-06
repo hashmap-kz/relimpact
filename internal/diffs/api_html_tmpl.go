@@ -132,12 +132,16 @@ const reportTemplates = `
     <span>{{.KindLabel}}</span>
     <span class="compact-cnt {{.CountClass}}">{{.Count}}</span>
   </div>
-  {{range .Rows}}
-    <div class="compact-row">
-      <span class="pfx {{.PrefixClass}}">{{.Prefix}}</span>
-      <code>{{.Code}}</code>
-      {{if .Type}}<span class="ctype">{{.Type}}</span>{{end}}
-    </div>
+  {{if .Body}}
+    <pre class="struct-pre">{{.Body}}</pre>
+  {{else}}
+    {{range .Rows}}
+      <div class="compact-row">
+        <span class="pfx {{.PrefixClass}}">{{.Prefix}}</span>
+        <code>{{.Code}}</code>
+        {{if .Type}}<span class="ctype">{{.Type}}</span>{{end}}
+      </div>
+    {{end}}
   {{end}}
 </div>
 {{end}}

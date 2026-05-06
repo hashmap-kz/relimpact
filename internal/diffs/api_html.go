@@ -123,7 +123,8 @@ type kindGroupData struct {
 	KindLabel  string
 	CountClass string
 	Count      int
-	Rows       []compactRowData
+	Rows       []compactRowData // used for Func/Method — inline signature per row
+	Body       template.HTML    // used for Var/Const/Type — rendered as a code block
 }
 
 type compactRowData struct {
@@ -342,8 +343,12 @@ func buildStatusSection(title, accentClass, status string, changes []SymbolChang
 				s.TypeDefBlocks = append(s.TypeDefBlocks, buildTypeDefBlock(ch, status))
 			}
 			if len(withoutBody) > 0 {
-				s.KindGroups = append(s.KindGroups, buildKindGroup(kind, withoutBody, status))
+				s.KindGroups = append(s.KindGroups, buildScalarTypeGroup(withoutBody, status))
 			}
+		case "Var":
+			s.KindGroups = append(s.KindGroups, buildVarGroup(xs, status))
+		case "Const":
+			s.KindGroups = append(s.KindGroups, buildConstGroup(xs, status))
 		default:
 			s.KindGroups = append(s.KindGroups, buildKindGroup(kind, xs, status))
 		}
@@ -436,6 +441,164 @@ func buildKindGroup(kind string, changes []SymbolChange, status string) kindGrou
 		Count:      len(changes),
 		Rows:       rows,
 	}
+}
+
+// buildScalarTypeGroup renders named scalar types (type Foo string, type ID int, etc.)
+// as a code block — more context than a bare name.
+func buildScalarTypeGroup(changes []SymbolChange, status string) kindGroupData {
+	prefix, spanClass, countClass := diffPrefixClasses(status)
+	var b strings.Builder
+	for _, ch := range changes {
+		sig := abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
+		// sig is just the type name; formatAPIValue prepends "type "
+		line := formatAPIValue("Type", "", sig)
+		b.WriteString(`<span class="` + spanClass + `">`)
+		b.WriteString(prefix + " " + template.HTMLEscapeString(line) + "</span>")
+	}
+	return kindGroupData{
+		KindLabel:  pluralKind("Type"),
+		CountClass: countClass,
+		Count:      len(changes),
+		Body:       template.HTML(b.String()),
+	}
+}
+
+// buildVarGroup renders package-level variables as a code block.
+func buildVarGroup(changes []SymbolChange, status string) kindGroupData {
+	prefix, spanClass, countClass := diffPrefixClasses(status)
+	var b strings.Builder
+	for _, ch := range changes {
+		sig := abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
+		parts := strings.Fields(sig)
+		var line string
+		if len(parts) >= 2 {
+			name := parts[0]
+			typ := strings.TrimSpace(strings.TrimPrefix(sig, name))
+			line = "var " + name + " " + typ
+		} else {
+			line = "var " + sig
+		}
+		b.WriteString(`<span class="` + spanClass + `">` + prefix + " " + template.HTMLEscapeString(line) + "\n</span>")
+	}
+	return kindGroupData{
+		KindLabel:  pluralKind("Var"),
+		CountClass: countClass,
+		Count:      len(changes),
+		Body:       template.HTML(b.String()),
+	}
+}
+
+// parseConstSignature splits a const signature "Name Type = value" into parts.
+// isUntypedBasic reports whether a Go type string is an untyped basic kind
+// (e.g. "untyped string", "untyped int"). For these, the type is noise in the
+// report — the value is what matters.
+func isUntypedBasic(typ string) bool {
+	return strings.HasPrefix(typ, "untyped ")
+}
+
+// parseConstSignature splits "Name Type = value" into its parts and decides
+// whether to surface the type in the display.
+func parseConstSignature(sig string) (name, typ, value string) {
+	sig = abbreviateImportPaths(strings.TrimSpace(sig))
+	if idx := strings.Index(sig, " = "); idx >= 0 {
+		value = strings.TrimSpace(sig[idx+3:])
+		sig = sig[:idx]
+	}
+	parts := strings.Fields(sig)
+	if len(parts) == 0 {
+		return "", "", value
+	}
+	name = parts[0]
+	if len(parts) >= 2 {
+		typ = strings.TrimSpace(strings.TrimPrefix(sig, name))
+		// Drop untyped basic types — they add no information.
+		if isUntypedBasic(typ) {
+			typ = ""
+		}
+	}
+	return name, typ, value
+}
+
+// buildConstGroup renders constants as a code block, grouping consts that share
+// the same named type into a single const ( ... ) block — the common iota-enum
+// pattern. Untyped consts are rendered as individual "const Name = value" lines.
+func buildConstGroup(changes []SymbolChange, status string) kindGroupData {
+	prefix, spanClass, countClass := diffPrefixClasses(status)
+
+	type constEntry struct{ name, typ, value string }
+	var entries []constEntry
+	for _, ch := range changes {
+		name, typ, value := parseConstSignature(firstNonEmpty(ch.New, ch.Old))
+		entries = append(entries, constEntry{name, typ, value})
+	}
+
+	// Only group by named types (typ != ""), and only when more than one const
+	// shares that type.
+	typCount := make(map[string]int)
+	for _, e := range entries {
+		if e.typ != "" {
+			typCount[e.typ]++
+		}
+	}
+
+	var b strings.Builder
+	rendered := make(map[string]bool)
+
+	// Gather grouped types in order of first appearance.
+	var groupedTypes []string
+	seenType := make(map[string]bool)
+	for _, e := range entries {
+		if e.typ != "" && typCount[e.typ] > 1 && !seenType[e.typ] {
+			groupedTypes = append(groupedTypes, e.typ)
+			seenType[e.typ] = true
+		}
+	}
+	for _, typ := range groupedTypes {
+		b.WriteString(`<span class="diff-context">const (` + "\n</span>")
+		for _, e := range entries {
+			if e.typ != typ {
+				continue
+			}
+			rendered[e.name] = true
+			line := "    " + e.name + " " + typ
+			if e.value != "" {
+				line += " = " + e.value
+			}
+			b.WriteString(`<span class="` + spanClass + `">` + prefix + " " + template.HTMLEscapeString(line) + "\n</span>")
+		}
+		b.WriteString(`<span class="diff-context">)` + "\n</span>")
+	}
+
+	// Remaining entries: named-type singletons and all untyped consts.
+	for _, e := range entries {
+		if rendered[e.name] {
+			continue
+		}
+		line := "const " + e.name
+		if e.typ != "" {
+			line += " " + e.typ
+		}
+		if e.value != "" {
+			line += " = " + e.value
+		}
+		b.WriteString(`<span class="` + spanClass + `">` + prefix + " " + template.HTMLEscapeString(line) + "\n</span>")
+	}
+
+	return kindGroupData{
+		KindLabel:  pluralKind("Const"),
+		CountClass: countClass,
+		Count:      len(changes),
+		Body:       template.HTML(b.String()),
+	}
+}
+
+// diffPrefixClasses returns the diff prefix string, span CSS class, and count
+// badge CSS class for a given status ("added" or "removed").
+func diffPrefixClasses(status string) (prefix, spanClass, countClass string) {
+	if status == "removed" {
+		return "−", "diff-removed", "rem"
+	}
+	return "+", "diff-added", "add"
 }
 
 // compactRowParts returns the code string and optional type annotation for a
