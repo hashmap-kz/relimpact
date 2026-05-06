@@ -111,7 +111,7 @@ func snap(tmpOld, tmpNew string) (map[string]diffs.APIPackage, map[string]diffs.
 
 func renderAPIReport(apiDiff *diffs.APIDiff, repoDir, oldRef, newRef string, format ReportFormat) string {
 	if format == ReportFormatHTML {
-		return apiDiff.HTML(diffs.APIReportMeta{
+		return apiDiff.HTML(diffs.ReportMetadata{
 			Repo:   repoDir,
 			OldRef: oldRef,
 			NewRef: newRef,

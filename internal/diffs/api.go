@@ -31,27 +31,28 @@ type APIType struct {
 	Methods []string `json:"methods"`
 }
 
-type APIDiffRes struct {
-	Label string
-	Path  string
-	X     string
+// DiffItem represents a single added or removed public symbol in a package.
+type DiffItem struct {
+	Label     string
+	Path      string
+	Signature string // raw type-checker signature string for this symbol
 }
 
 type APIDiff struct {
 	PackagesAdded   []string     `json:"packages_added,omitempty"`
 	PackagesRemoved []string     `json:"packages_removed,omitempty"`
-	FuncsAdded      []APIDiffRes `json:"funcs_added,omitempty"`
-	FuncsRemoved    []APIDiffRes `json:"funcs_removed,omitempty"`
-	VarsAdded       []APIDiffRes `json:"vars_added,omitempty"`
-	VarsRemoved     []APIDiffRes `json:"vars_removed,omitempty"`
-	ConstsAdded     []APIDiffRes `json:"consts_added,omitempty"`
-	ConstsRemoved   []APIDiffRes `json:"consts_removed,omitempty"`
-	TypesAdded      []APIDiffRes `json:"types_added,omitempty"`
-	TypesRemoved    []APIDiffRes `json:"types_removed,omitempty"`
-	FieldsAdded     []APIDiffRes `json:"fields_added,omitempty"`
-	FieldsRemoved   []APIDiffRes `json:"fields_removed,omitempty"`
-	MethodsAdded    []APIDiffRes `json:"methods_added,omitempty"`
-	MethodsRemoved  []APIDiffRes `json:"methods_removed,omitempty"`
+	FuncsAdded      []DiffItem `json:"funcs_added,omitempty"`
+	FuncsRemoved    []DiffItem `json:"funcs_removed,omitempty"`
+	VarsAdded       []DiffItem `json:"vars_added,omitempty"`
+	VarsRemoved     []DiffItem `json:"vars_removed,omitempty"`
+	ConstsAdded     []DiffItem `json:"consts_added,omitempty"`
+	ConstsRemoved   []DiffItem `json:"consts_removed,omitempty"`
+	TypesAdded      []DiffItem `json:"types_added,omitempty"`
+	TypesRemoved    []DiffItem `json:"types_removed,omitempty"`
+	FieldsAdded     []DiffItem `json:"fields_added,omitempty"`
+	FieldsRemoved   []DiffItem `json:"fields_removed,omitempty"`
+	MethodsAdded    []DiffItem `json:"methods_added,omitempty"`
+	MethodsRemoved  []DiffItem `json:"methods_removed,omitempty"`
 }
 
 func (d *APIDiff) String() string {
@@ -96,9 +97,9 @@ func (d *APIDiff) String() string {
 	sb.WriteString("| Kind     | Added | Removed |\n")
 	sb.WriteString("|----------|------:|--------:|\n")
 	for _, s := range summary {
-		xFprintf(&sb, "| %-8s | %5d | %7d |\n", s.Name, s.Added, s.Removed)
+		hfprintf(&sb, "| %-8s | %5d | %7d |\n", s.Name, s.Added, s.Removed)
 	}
-	xFprintf(&sb, "| %-8s | %5d | %7d |\n", "Total", totalAdded, totalRemoved)
+	hfprintf(&sb, "| %-8s | %5d | %7d |\n", "Total", totalAdded, totalRemoved)
 
 	// Breaking Changes section
 	sb.WriteString("\n### Breaking Changes\n\n")
@@ -107,7 +108,7 @@ func (d *APIDiff) String() string {
 	} else {
 		for _, s := range summary {
 			if s.Removed > 0 {
-				xFprintf(&sb, "- %s Removed: **%d**\n", s.Name, s.Removed)
+				hfprintf(&sb, "- %s Removed: **%d**\n", s.Name, s.Removed)
 			}
 		}
 	}
@@ -117,11 +118,11 @@ func (d *APIDiff) String() string {
 		if len(packages) == 0 {
 			return
 		}
-		xFprintf(&sb, "\n### %s\n\n", prefix)
+		hfprintf(&sb, "\n### %s\n\n", prefix)
 		sorted := append([]string{}, packages...)
 		sort.Strings(sorted)
 		for _, pkg := range sorted {
-			xFprintf(&sb, "- `%s`\n", pkg)
+			hfprintf(&sb, "- `%s`\n", pkg)
 		}
 	}
 
@@ -134,14 +135,14 @@ func (d *APIDiff) String() string {
 		removed changeKind = "Removed"
 	)
 
-	groupByPkgLabel := func(items []APIDiffRes, kind changeKind) map[string]map[string][]string {
+	groupByPkgLabel := func(items []DiffItem, kind changeKind) map[string]map[string][]string {
 		group := make(map[string]map[string][]string)
 		for _, res := range items {
 			if _, ok := group[res.Path]; !ok {
 				group[res.Path] = make(map[string][]string)
 			}
 			key := fmt.Sprintf("%s %s", kind, res.Label)
-			group[res.Path][key] = append(group[res.Path][key], res.X)
+			group[res.Path][key] = append(group[res.Path][key], res.Signature)
 		}
 		return group
 	}
@@ -180,7 +181,7 @@ func (d *APIDiff) String() string {
 		sort.Strings(pkgs)
 
 		for _, pkg := range pkgs {
-			xFprintf(&sb, "\n#### Package `%s`\n\n", pkg)
+			hfprintf(&sb, "\n#### Package `%s`\n\n", pkg)
 			sb.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
 
 			labels := make([]string, 0, len(grouped[pkg]))
@@ -190,11 +191,11 @@ func (d *APIDiff) String() string {
 			sort.Strings(labels)
 
 			for _, label := range labels {
-				xFprintf(&sb, "- %s:\n", label)
+				hfprintf(&sb, "- %s:\n", label)
 				xs := grouped[pkg][label]
 				sort.Strings(xs)
 				for _, x := range xs {
-					xFprintf(&sb, "    - %s\n", x)
+					hfprintf(&sb, "    - %s\n", x)
 				}
 			}
 
@@ -407,10 +408,10 @@ func DiffAPI(oldAPI, newAPI map[string]APIPackage) *APIDiff {
 			oldType, ok := oldPkg.Types[tname]
 			if !ok {
 				// types +
-				apiDiffResult.TypesAdded = append(apiDiffResult.TypesAdded, APIDiffRes{
-					Label: "Type",
-					Path:  path,
-					X:     tname,
+				apiDiffResult.TypesAdded = append(apiDiffResult.TypesAdded, DiffItem{
+					Label:     "Type",
+					Path:      path,
+					Signature: tname,
 				})
 				continue
 			}
@@ -428,10 +429,10 @@ func DiffAPI(oldAPI, newAPI map[string]APIPackage) *APIDiff {
 		// types -
 		for tname := range oldPkg.Types {
 			if _, ok := newPkg.Types[tname]; !ok {
-				apiDiffResult.TypesRemoved = append(apiDiffResult.TypesRemoved, APIDiffRes{
-					Label: "Type",
-					Path:  path,
-					X:     tname,
+				apiDiffResult.TypesRemoved = append(apiDiffResult.TypesRemoved, DiffItem{
+					Label:     "Type",
+					Path:      path,
+					Signature: tname,
 				})
 			}
 		}
@@ -447,7 +448,7 @@ func DiffAPI(oldAPI, newAPI map[string]APIPackage) *APIDiff {
 	return apiDiffResult
 }
 
-func diffList(label, path string, oldList, newList []string) (added, removed []APIDiffRes) {
+func diffList(label, path string, oldList, newList []string) (added, removed []DiffItem) {
 	oldSet := make(map[string]bool)
 	for _, x := range oldList {
 		oldSet[x] = true
@@ -459,19 +460,19 @@ func diffList(label, path string, oldList, newList []string) (added, removed []A
 
 	for x := range newSet {
 		if !oldSet[x] {
-			added = append(added, APIDiffRes{
-				Label: label,
-				Path:  path,
-				X:     x,
+			added = append(added, DiffItem{
+				Label:     label,
+				Path:      path,
+				Signature: x,
 			})
 		}
 	}
 	for x := range oldSet {
 		if !newSet[x] {
-			removed = append(removed, APIDiffRes{
-				Label: label,
-				Path:  path,
-				X:     x,
+			removed = append(removed, DiffItem{
+				Label:     label,
+				Path:      path,
+				Signature: x,
 			})
 		}
 	}
