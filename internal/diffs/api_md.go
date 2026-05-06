@@ -2,9 +2,10 @@ package diffs
 
 import (
 	"fmt"
-	"github.com/hashmap-kz/relimpact/internal/x/fmtx"
 	"sort"
 	"strings"
+
+	"github.com/hashmap-kz/relimpact/internal/x/fmtx"
 )
 
 func (d *APIDiff) String() string {
@@ -18,7 +19,6 @@ func (d *APIDiff) String() string {
 	}
 
 	summary := []summaryRow{
-		{"Packages", len(d.PackagesAdded), len(d.PackagesRemoved)},
 		{"Funcs", len(d.FuncsAdded), len(d.FuncsRemoved)},
 		{"Vars", len(d.VarsAdded), len(d.VarsRemoved)},
 		{"Consts", len(d.ConstsAdded), len(d.ConstsRemoved)},
@@ -36,12 +36,6 @@ func (d *APIDiff) String() string {
 	// TOC
 	sb.WriteString("\n- [Summary](#summary)\n")
 	sb.WriteString("- [Breaking Changes](#breaking-changes)\n")
-	if len(d.PackagesAdded) > 0 {
-		sb.WriteString("- [Packages Added](#packages-added)\n")
-	}
-	if len(d.PackagesRemoved) > 0 {
-		sb.WriteString("- [Packages Removed](#packages-removed)\n")
-	}
 	sb.WriteString("- [Package Changes](#package-changes)\n")
 
 	// Summary table
@@ -64,22 +58,6 @@ func (d *APIDiff) String() string {
 			}
 		}
 	}
-
-	// Packages added/removed
-	writeSectionSimple := func(prefix string, packages []string) {
-		if len(packages) == 0 {
-			return
-		}
-		fmtx.Fprintf(&sb, "\n### %s\n\n", prefix)
-		sorted := append([]string{}, packages...)
-		sort.Strings(sorted)
-		for _, pkg := range sorted {
-			fmtx.Fprintf(&sb, "- `%s`\n", pkg)
-		}
-	}
-
-	writeSectionSimple("Packages Added", d.PackagesAdded)
-	writeSectionSimple("Packages Removed", d.PackagesRemoved)
 
 	type changeKind string
 	const (

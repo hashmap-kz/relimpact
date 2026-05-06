@@ -3,9 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/hashmap-kz/relimpact/internal/x/fmtx"
 	"os"
 	"strings"
+
+	"github.com/hashmap-kz/relimpact/internal/x/fmtx"
 
 	"github.com/hashmap-kz/relimpact/cmd"
 	"github.com/hashmap-kz/relimpact/internal/loggr"
@@ -21,7 +22,7 @@ func main() {
 	flag.Parse()
 
 	if *oldRef == "" || *newRef == "" {
-		_, _ = fmt.Fprintf(os.Stderr, "Usage: relimpact --old <ref> --new <ref> [--format markdown|html]\n")
+		fmtx.Fprintf(os.Stderr, "Usage: relimpact --old <ref> --new <ref> [--format markdown|html]\n")
 		os.Exit(1)
 	}
 
@@ -30,7 +31,7 @@ func main() {
 	case cmd.ReportFormatMarkdown, cmd.ReportFormatHTML:
 		// ok
 	default:
-		_, _ = fmt.Fprintf(os.Stderr, "unsupported format %q: use markdown or html\n", *format)
+		fmtx.Fprintf(os.Stderr, "unsupported format %q: use markdown or html\n", *format)
 		os.Exit(1)
 	}
 
@@ -45,9 +46,10 @@ func main() {
 	}
 
 	if *outputFile != "" {
-		err := os.WriteFile(*outputFile, []byte(report), 0750)
+		err := os.WriteFile(*outputFile, []byte(report), 0o750)
 		if err != nil {
 			fmtx.Fprintf(os.Stderr, "error writing file: %v", err)
+			os.Exit(1)
 		}
 	} else {
 		fmt.Print(report)

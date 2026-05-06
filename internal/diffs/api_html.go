@@ -8,10 +8,6 @@ import (
 	"time"
 )
 
-// -----------------------------------------------------------------------
-// Public types
-// -----------------------------------------------------------------------
-
 // ReportMetadata holds context for rendering the HTML report header.
 type ReportMetadata struct {
 	Repo   string
@@ -20,8 +16,6 @@ type ReportMetadata struct {
 	Now    time.Time
 }
 
-// SymbolChange is a processed, display-ready record of a single public symbol
-// that was added, removed, or had its signature changed between two refs.
 type SymbolChange struct {
 	Package  string
 	Kind     string
@@ -30,11 +24,9 @@ type SymbolChange struct {
 	Old      string
 	New      string
 	Status   string
-	TypeBody *APITypeBody // non-nil for whole-type adds/removes with struct or interface bodies
+	TypeBody *APITypeBody
 }
 
-// StructFieldChange holds a parsed field belonging to a specific struct owner,
-// ready for grouped diff rendering.
 type StructFieldChange struct {
 	Owner  string
 	Name   string
@@ -42,13 +34,6 @@ type StructFieldChange struct {
 	Status string
 }
 
-type apiConstEntry struct {
-	name  string
-	typ   string
-	value string
-}
-
-// PackageChangeSummary aggregates change counts for a single package.
 type PackageChangeSummary struct {
 	Package  string
 	Breaking int
@@ -63,15 +48,9 @@ type overallSummary struct {
 	Changed         int
 	Removed         int
 	Added           int
-	PackagesAdded   int
-	PackagesRemoved int
 	ChangedPackages int
 	Total           int
 }
-
-// -----------------------------------------------------------------------
-// Template data types
-// -----------------------------------------------------------------------
 
 type reportData struct {
 	CSS              template.HTML
@@ -129,8 +108,8 @@ type kindGroupData struct {
 	KindLabel  string
 	CountClass string
 	Count      int
-	Rows       []compactRowData // used for Func/Method — inline signature per row
-	Body       template.HTML    // used for Var/Const/Type — rendered as a code block
+	Rows       []compactRowData
+	Body       template.HTML
 }
 
 type compactRowData struct {
@@ -154,19 +133,12 @@ type typeDefBlockData struct {
 	Body       template.HTML
 }
 
-// -----------------------------------------------------------------------
-// Entry point
-// -----------------------------------------------------------------------
-
 var reportTmpl = template.Must(
 	template.New("report").
 		Funcs(template.FuncMap{
 			"not": func(v interface{}) bool {
-				switch x := v.(type) {
-				case []pkgSectionData:
-					return len(x) == 0
-				}
-				return false
+				xs, ok := v.([]pkgSectionData)
+				return ok && len(xs) == 0
 			},
 		}).
 		Parse(reportTemplates),
@@ -177,22 +149,9 @@ func (d *APIDiff) HTML(meta ReportMetadata) string {
 		meta.Now = time.Now()
 	}
 
-	changes := filterHTMLNoise(d.collectSymbolChanges())
-	pkgSummaries := summarizeByPackage(changes)
-	summary := summarizeOverall(changes, len(pkgSummaries))
-
-	verdict := verdictData{
-		Class: "verdict-ok",
-		Icon:  "circle-check",
-		Text:  "Compatible API changes only — no breaking changes detected.",
-	}
-	if summary.Breaking > 0 {
-		verdict = verdictData{
-			Class: "verdict-breaking",
-			Icon:  "alert-triangle",
-			Text:  "Breaking API changes detected — review before release.",
-		}
-	}
+	changes := d.collectSymbolChanges()
+	packages := summarizeByPackage(changes)
+	summary := summarizeOverall(packages)
 
 	data := reportData{
 		CSS: template.HTML(reportCSS),
@@ -202,9 +161,9 @@ func (d *APIDiff) HTML(meta ReportMetadata) string {
 			NewRef:      defaultString(meta.NewRef, "new"),
 			GeneratedAt: meta.Now.Format("2006-01-02 15:04:05"),
 		},
-		Verdict:          verdict,
+		Verdict:          buildVerdict(summary),
 		Summary:          summary,
-		BreakingPackages: buildSidebarEntries(pkgSummaries),
+		BreakingPackages: buildSidebarEntries(packages),
 		Packages:         buildPackageSections(changes),
 	}
 
@@ -215,80 +174,50 @@ func (d *APIDiff) HTML(meta ReportMetadata) string {
 	return sb.String()
 }
 
-func filterHTMLNoise(changes []SymbolChange) []SymbolChange {
-	// A package add/remove without exported symbol changes is usually noise in the
-	// HTML report: it creates an empty-looking section with only "Packages · 1".
-	// Keep the report focused on API surface that callers can actually use.
-	out := changes[:0]
-	for _, ch := range changes {
-		if ch.Kind == "Package" {
+func buildVerdict(summary overallSummary) verdictData {
+	if summary.Breaking == 0 {
+		return verdictData{
+			Class: "verdict-ok",
+			Icon:  "circle-check",
+			Text:  "Compatible API changes only — no breaking changes detected.",
+		}
+	}
+	return verdictData{
+		Class: "verdict-breaking",
+		Icon:  "alert-triangle",
+		Text:  "Breaking API changes detected — review before release.",
+	}
+}
+
+func buildSidebarEntries(packages []PackageChangeSummary) []sidebarEntry {
+	out := make([]sidebarEntry, 0, len(packages))
+	for _, p := range packages {
+		if p.Breaking == 0 {
 			continue
 		}
-		out = append(out, ch)
+		out = append(out, sidebarEntry{
+			AnchorID:  anchorID(p.Package),
+			Package:   p.Package,
+			ShortName: shortPackage(p.Package),
+			Breaking:  p.Breaking,
+		})
 	}
 	return out
 }
-
-// -----------------------------------------------------------------------
-// Sidebar
-// -----------------------------------------------------------------------
-
-func buildSidebarEntries(pkgs []PackageChangeSummary) []sidebarEntry {
-	var out []sidebarEntry
-	for _, p := range pkgs {
-		if p.Breaking > 0 {
-			out = append(out, sidebarEntry{
-				AnchorID:  anchorID(p.Package),
-				Package:   p.Package,
-				ShortName: shortPackage(p.Package),
-				Breaking:  p.Breaking,
-			})
-		}
-	}
-	return out
-}
-
-// -----------------------------------------------------------------------
-// Package sections
-// -----------------------------------------------------------------------
 
 func buildPackageSections(changes []SymbolChange) []pkgSectionData {
-	byPkg := make(map[string][]SymbolChange)
-	for _, ch := range changes {
-		byPkg[ch.Package] = append(byPkg[ch.Package], ch)
-	}
-	pkgs := make([]string, 0, len(byPkg))
-	for pkg := range byPkg {
-		pkgs = append(pkgs, pkg)
-	}
-	sort.Strings(pkgs)
+	byPkg := groupChangesByPackage(changes)
+	pkgs := sortedKeys(byPkg)
 
-	var out []pkgSectionData
+	out := make([]pkgSectionData, 0, len(pkgs))
 	for _, pkg := range pkgs {
 		pkgChanges := byPkg[pkg]
-		sort.Slice(pkgChanges, func(i, j int) bool {
-			if statusRank(pkgChanges[i].Status) != statusRank(pkgChanges[j].Status) {
-				return statusRank(pkgChanges[i].Status) < statusRank(pkgChanges[j].Status)
-			}
-			if kindRank(pkgChanges[i].Kind) != kindRank(pkgChanges[j].Kind) {
-				return kindRank(pkgChanges[i].Kind) < kindRank(pkgChanges[j].Kind)
-			}
-			return pkgChanges[i].Name < pkgChanges[j].Name
-		})
-
-		isBreaking := false
-		for _, ch := range pkgChanges {
-			if ch.Status == "changed" || ch.Status == "removed" {
-				isBreaking = true
-				break
-			}
-		}
-
+		sortChanges(pkgChanges)
 		out = append(out, pkgSectionData{
 			AnchorID:       anchorID(pkg),
 			Package:        pkg,
 			ShortName:      shortPackage(pkg),
-			IsBreaking:     isBreaking,
+			IsBreaking:     hasBreakingChanges(pkgChanges),
 			StatusSections: buildStatusSections(pkgChanges),
 		})
 	}
@@ -296,165 +225,152 @@ func buildPackageSections(changes []SymbolChange) []pkgSectionData {
 }
 
 func buildStatusSections(changes []SymbolChange) []statusSectionData {
-	var sections []statusSectionData
-	specs := []struct {
-		status      string
-		title       string
-		accentClass string
+	sections := make([]statusSectionData, 0, 3)
+	for _, spec := range []struct {
+		Status string
+		Title  string
+		Accent string
 	}{
 		{"changed", "Changed signatures", "changed"},
 		{"removed", "Removed API", "removed"},
 		{"added", "Added API", "added"},
-	}
-	for _, spec := range specs {
-		var group []SymbolChange
-		for _, ch := range changes {
-			if ch.Status == spec.status {
-				group = append(group, ch)
-			}
-		}
-		if len(group) == 0 {
+	} {
+		sectionChanges := filterByStatus(changes, spec.Status)
+		if len(sectionChanges) == 0 {
 			continue
 		}
-		sections = append(sections, buildStatusSection(spec.title, spec.accentClass, spec.status, group))
+		sections = append(
+			sections,
+			buildStatusSection(spec.Title, spec.Accent, spec.Status, sectionChanges),
+		)
 	}
 	return sections
 }
 
-func buildStatusSection(title, accentClass, status string, changes []SymbolChange) statusSectionData {
-	s := statusSectionData{
-		Title:       title,
-		AccentClass: accentClass,
-	}
-
+func buildStatusSection(
+	title, accentClass, status string,
+	changes []SymbolChange,
+) statusSectionData {
+	section := statusSectionData{Title: title, AccentClass: accentClass}
 	if status == "changed" {
 		for _, ch := range changes {
-			s.ChangeCards = append(s.ChangeCards, buildChangeCard(ch))
+			section.ChangeCards = append(section.ChangeCards, buildChangeCard(ch))
 		}
-		return s
+		return section
 	}
 
-	// Group by kind in canonical order.
-	byKind := make(map[string][]SymbolChange)
-	for _, ch := range changes {
-		byKind[ch.Kind] = append(byKind[ch.Kind], ch)
-	}
-
+	byKind := groupChangesByKind(changes)
 	for _, kind := range apiKindOrder() {
-		xs := byKind[kind]
-		if len(xs) == 0 {
+		kindChanges := byKind[kind]
+		if len(kindChanges) == 0 {
 			continue
 		}
-		sort.Slice(xs, func(i, j int) bool { return xs[i].Name < xs[j].Name })
+		sortChanges(kindChanges)
+		addKindToSection(&section, kind, kindChanges, status)
+	}
+	return section
+}
 
-		switch kind {
-		case "Field":
-			s.StructFieldDiffs = append(s.StructFieldDiffs, buildStructFieldDiffs(xs, status)...)
-		case "Type":
-			var withBody, withoutBody []SymbolChange
-			for _, ch := range xs {
-				if ch.TypeBody != nil && (ch.TypeBody.Kind == "struct" || ch.TypeBody.Kind == "interface") {
-					withBody = append(withBody, ch)
-				} else {
-					withoutBody = append(withoutBody, ch)
-				}
-			}
-			for _, ch := range withBody {
-				s.TypeDefBlocks = append(s.TypeDefBlocks, buildTypeDefBlock(ch, status))
-			}
-			if len(withoutBody) > 0 {
-				s.KindGroups = append(s.KindGroups, buildScalarTypeGroup(withoutBody, status))
-			}
-		case "Var":
-			s.KindGroups = append(s.KindGroups, buildVarGroup(xs, status))
-		case "Const":
-			s.KindGroups = append(s.KindGroups, buildConstGroup(xs, status))
-		default:
-			s.KindGroups = append(s.KindGroups, buildKindGroup(kind, xs, status))
+func addKindToSection(
+	section *statusSectionData,
+	kind string,
+	changes []SymbolChange,
+	status string,
+) {
+	switch kind {
+	case "Field":
+		section.StructFieldDiffs = append(
+			section.StructFieldDiffs,
+			buildStructFieldDiffs(changes, status)...)
+	case "Type":
+		blocks, rows := splitTypes(changes)
+		for _, ch := range blocks {
+			section.TypeDefBlocks = append(section.TypeDefBlocks, buildTypeDefBlock(ch, status))
+		}
+		if len(rows) > 0 {
+			section.KindGroups = append(section.KindGroups, buildScalarTypeGroup(rows, status))
+		}
+	case "Var":
+		section.KindGroups = append(section.KindGroups, buildVarGroup(changes, status))
+	case "Const":
+		section.KindGroups = append(section.KindGroups, buildConstGroup(changes, status))
+	default:
+		section.KindGroups = append(section.KindGroups, buildKindGroup(kind, changes, status))
+	}
+}
+
+func splitTypes(changes []SymbolChange) (withBody, withoutBody []SymbolChange) {
+	for _, ch := range changes {
+		if ch.TypeBody != nil && (ch.TypeBody.Kind == "struct" || ch.TypeBody.Kind == "interface") {
+			withBody = append(withBody, ch)
+		} else {
+			withoutBody = append(withoutBody, ch)
 		}
 	}
-	return s
+	return withBody, withoutBody
 }
 
-// -----------------------------------------------------------------------
-// Change cards (changed signatures)
-// -----------------------------------------------------------------------
-
 func buildChangeCard(ch SymbolChange) changeCardData {
-	oldFmt := formatAPIValue(ch.Kind, ch.Scope, ch.Old)
-	newFmt := formatAPIValue(ch.Kind, ch.Scope, ch.New)
 	return changeCardData{
-		KindLabel:   ch.Kind + " signature",
-		Name:        ch.Name,
-		UnifiedDiff: buildUnifiedDiff(oldFmt, newFmt),
+		KindLabel: ch.Kind + " signature",
+		Name:      ch.Name,
+		UnifiedDiff: buildUnifiedDiff(
+			formatAPIValue(ch.Kind, ch.Scope, ch.Old),
+			formatAPIValue(ch.Kind, ch.Scope, ch.New),
+		),
 	}
 }
 
-// buildUnifiedDiff returns safe HTML for a unified diff block.
-// Removed lines are red, added lines are green, shared context is muted.
 func buildUnifiedDiff(oldSig, newSig string) template.HTML {
 	oldLines := strings.Split(oldSig, "\n")
 	newLines := strings.Split(newSig, "\n")
-
-	oldSet := make(map[string]bool, len(oldLines))
-	newSet := make(map[string]bool, len(newLines))
-	for _, l := range oldLines {
-		oldSet[l] = true
-	}
-	for _, l := range newLines {
-		newSet[l] = true
-	}
+	oldSet := lineSet(oldLines)
+	newSet := lineSet(newLines)
 
 	var b strings.Builder
 	for _, line := range oldLines {
 		if !newSet[line] {
-			b.WriteString(`<span class="diff-removed">− `)
-			b.WriteString(template.HTMLEscapeString(line))
-			b.WriteString("\n</span>")
+			writeDiffLine(&b, "diff-removed", "−", line)
 		}
 	}
 	for _, line := range oldLines {
 		if newSet[line] {
-			b.WriteString(`<span class="diff-context">  `)
-			b.WriteString(template.HTMLEscapeString(line))
-			b.WriteString("\n</span>")
+			writeDiffLine(&b, "diff-context", " ", line)
 		}
 	}
 	for _, line := range newLines {
 		if !oldSet[line] {
-			b.WriteString(`<span class="diff-added">+ `)
-			b.WriteString(template.HTMLEscapeString(line))
-			b.WriteString("\n</span>")
+			writeDiffLine(&b, "diff-added", "+", line)
 		}
 	}
 	return template.HTML(b.String())
 }
 
-// -----------------------------------------------------------------------
-// Compact kind groups
-// -----------------------------------------------------------------------
+func lineSet(lines []string) map[string]bool {
+	out := make(map[string]bool, len(lines))
+	for _, line := range lines {
+		out[line] = true
+	}
+	return out
+}
+
+func writeDiffLine(b *strings.Builder, class, prefix, line string) {
+	b.WriteString(`<span class="` + class + `">`)
+	b.WriteString(prefix + " ")
+	b.WriteString(template.HTMLEscapeString(line))
+	b.WriteString("\n</span>")
+}
 
 func buildKindGroup(kind string, changes []SymbolChange, status string) kindGroupData {
-	countClass := "add"
-	prefix := "+"
-	prefixClass := "add"
-	if status == "removed" {
-		countClass = "rem"
-		prefix = "−"
-		prefixClass = "rem"
-	}
-
+	prefix, prefixClass, countClass := compactPrefix(status)
 	rows := make([]compactRowData, 0, len(changes))
 	for _, ch := range changes {
 		code, typ := compactRowParts(ch)
-		rows = append(rows, compactRowData{
-			PrefixClass: prefixClass,
-			Prefix:      prefix,
-			Code:        code,
-			Type:        typ,
-		})
+		rows = append(
+			rows,
+			compactRowData{PrefixClass: prefixClass, Prefix: prefix, Code: code, Type: typ},
+		)
 	}
-
 	return kindGroupData{
 		KindLabel:  pluralKind(kind),
 		CountClass: countClass,
@@ -463,93 +379,16 @@ func buildKindGroup(kind string, changes []SymbolChange, status string) kindGrou
 	}
 }
 
-// buildScalarTypeGroup renders named scalar types (type Foo string, type ID int, etc.)
-// as a code block — more context than a bare name.
 func buildScalarTypeGroup(changes []SymbolChange, status string) kindGroupData {
-	prefix, spanClass, countClass := diffPrefixClasses(status)
-	var b strings.Builder
-	for _, ch := range changes {
-		sig := abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
-		// sig is just the type name; formatAPIValue prepends "type "
-		line := formatAPIValue("Type", "", sig)
-		b.WriteString(`<span class="` + spanClass + `">`)
-		b.WriteString(prefix + " " + template.HTMLEscapeString(line) + "</span>")
-	}
-	return kindGroupData{
-		KindLabel:  pluralKind("Type"),
-		CountClass: countClass,
-		Count:      len(changes),
-		Body:       template.HTML(b.String()),
-	}
+	return buildKindGroup("Type", changes, status)
 }
 
-// buildVarGroup renders package-level variables as compact rows.
-// Values are not available from go/types for variables, so the report shows the
-// public variable name and its type without pretending there is an initializer.
 func buildVarGroup(changes []SymbolChange, status string) kindGroupData {
-	_, _, countClass := diffPrefixClasses(status)
-	prefix, prefixClass := compactPrefix(status)
-
-	rows := make([]compactRowData, 0, len(changes))
-	for _, ch := range changes {
-		name, typ := compactTypedSymbol(ch)
-		rows = append(rows, compactRowData{
-			PrefixClass: prefixClass,
-			Prefix:      prefix,
-			Code:        name,
-			Type:        typ,
-		})
-	}
-
-	return kindGroupData{
-		KindLabel:  pluralKind("Var"),
-		CountClass: countClass,
-		Count:      len(changes),
-		Rows:       rows,
-	}
+	return buildKindGroup("Var", changes, status)
 }
 
-// parseConstSignature splits a const signature "Name Type = value" into parts.
-// isUntypedBasic reports whether a Go type string is an untyped basic kind
-// (e.g. "untyped string", "untyped int"). For these, the type is noise in the
-// report — the value is what matters.
-func isUntypedBasic(typ string) bool {
-	return strings.HasPrefix(typ, "untyped ")
-}
-
-// parseConstSignature splits "Name Type = value" into its parts and decides
-// whether to surface the type in the display.
-func parseConstSignature(sig string) (name, typ, value string) {
-	sig = abbreviateImportPaths(strings.TrimSpace(sig))
-	if idx := strings.Index(sig, " = "); idx >= 0 {
-		value = strings.TrimSpace(sig[idx+3:])
-		sig = sig[:idx]
-	}
-	parts := strings.Fields(sig)
-	if len(parts) == 0 {
-		return "", "", value
-	}
-	name = parts[0]
-	if len(parts) >= 2 {
-		typ = strings.TrimSpace(strings.TrimPrefix(sig, name))
-		// Drop untyped basic types — they add no information.
-		if isUntypedBasic(typ) {
-			typ = ""
-		}
-	}
-	return name, typ, value
-}
-
-// buildConstGroup renders constants as compact rows.
-// go/types exposes constant values when the snapshot contains them. When a value
-// is available, the report prefers `Name = value`. When older cache entries or
-// older snapshots only contain `Name Type`, the report avoids showing that type
-// as if it were the value; it shows just the name and, when useful, places the
-// shared enum type in the group header.
 func buildConstGroup(changes []SymbolChange, status string) kindGroupData {
-	_, _, countClass := diffPrefixClasses(status)
-	prefix, prefixClass := compactPrefix(status)
-
+	prefix, prefixClass, countClass := compactPrefix(status)
 	rows := make([]compactRowData, 0, len(changes))
 	for _, ch := range changes {
 		name, _, value := parseConstSignature(firstNonEmpty(ch.New, ch.Old))
@@ -557,14 +396,8 @@ func buildConstGroup(changes []SymbolChange, status string) kindGroupData {
 		if value != "" {
 			code += " = " + value
 		}
-
-		rows = append(rows, compactRowData{
-			PrefixClass: prefixClass,
-			Prefix:      prefix,
-			Code:        code,
-		})
+		rows = append(rows, compactRowData{PrefixClass: prefixClass, Prefix: prefix, Code: code})
 	}
-
 	return kindGroupData{
 		KindLabel:  pluralKind("Const"),
 		CountClass: countClass,
@@ -573,71 +406,52 @@ func buildConstGroup(changes []SymbolChange, status string) kindGroupData {
 	}
 }
 
-// diffPrefixClasses returns the diff prefix string, span CSS class, and count
-// badge CSS class for a given status ("added" or "removed").
-func diffPrefixClasses(status string) (prefix, spanClass, countClass string) {
+func compactPrefix(status string) (prefix, prefixClass, countClass string) {
 	if status == "removed" {
-		return "−", "diff-removed", "rem"
+		return "−", "rem", "rem"
 	}
-	return "+", "diff-added", "add"
+	return "+", "add", "add"
 }
 
-func compactPrefix(status string) (prefix, prefixClass string) {
-	if status == "removed" {
-		return "−", "rem"
-	}
-	return "+", "add"
-}
-
-// compactRowParts returns the code string and optional type annotation for a
-// compact list row, depending on the symbol kind.
 func compactRowParts(ch SymbolChange) (code, typ string) {
 	switch ch.Kind {
 	case "Func":
 		return compactFunc(ch), ""
 	case "Method":
 		return compactMethod(ch), ""
-	case "Var", "Const":
+	case "Var":
 		return compactTypedSymbol(ch)
+	case "Const":
+		name, _, value := parseConstSignature(firstNonEmpty(ch.New, ch.Old))
+		if value != "" {
+			return name + " = " + value, ""
+		}
+		return name, ""
+	case "Field":
+		return compactField(ch)
 	default:
-		return formatCompactSymbol(ch, ""), ""
+		return ch.Name, ""
 	}
 }
 
-// -----------------------------------------------------------------------
-// Struct field diffs
-// -----------------------------------------------------------------------
-
 func buildStructFieldDiffs(changes []SymbolChange, status string) []structFieldDiffData {
-	grouped := groupFieldsByOwner(changes, status)
-	if len(grouped) == 0 {
-		// Fallback: no owner info, render as a plain kind group.
-		kg := buildKindGroup("Field", changes, status)
+	byOwner := groupFieldsByOwner(changes)
+	owners := sortedKeys(byOwner)
+	if len(owners) == 0 {
 		return []structFieldDiffData{{
-			Title:      kg.KindLabel,
-			CountClass: kg.CountClass,
-			Count:      kg.Count,
+			Title:      pluralKind("Field"),
+			CountClass: countClass(status),
+			Count:      len(changes),
 			Body:       buildFallbackFieldBody(changes, status),
 		}}
 	}
 
-	owners := make([]string, 0, len(grouped))
-	for owner := range grouped {
-		owners = append(owners, owner)
-	}
-	sort.Strings(owners)
-
-	countClass := "add"
-	if status == "removed" {
-		countClass = "rem"
-	}
-
-	var out []structFieldDiffData
+	out := make([]structFieldDiffData, 0, len(owners))
 	for _, owner := range owners {
-		fields := grouped[owner]
+		fields := byOwner[owner]
 		out = append(out, structFieldDiffData{
 			Title:      "type " + owner + " struct",
-			CountClass: countClass,
+			CountClass: countClass(status),
 			Count:      len(fields),
 			Body:       buildStructFieldDiffBody(fields, status),
 		})
@@ -645,287 +459,273 @@ func buildStructFieldDiffs(changes []SymbolChange, status string) []structFieldD
 	return out
 }
 
-func buildStructFieldDiffBody(fields []StructFieldChange, status string) template.HTML {
-	prefix := "+"
-	spanClass := "diff-added"
-	if status == "removed" {
-		prefix = "-"
-		spanClass = "diff-removed"
+func groupFieldsByOwner(changes []SymbolChange) map[string][]StructFieldChange {
+	out := make(map[string][]StructFieldChange)
+	for _, ch := range changes {
+		field, ok := parseFieldChange(ch)
+		if !ok {
+			continue
+		}
+		out[field.Owner] = append(out[field.Owner], field)
 	}
+	for owner := range out {
+		sort.Slice(
+			out[owner],
+			func(i, j int) bool { return out[owner][i].Name < out[owner][j].Name },
+		)
+	}
+	return out
+}
 
+func parseFieldChange(ch SymbolChange) (StructFieldChange, bool) {
+	raw := abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
+	parts := strings.Fields(raw)
+	if len(parts) == 0 {
+		return StructFieldChange{}, false
+	}
+	fullName := parts[0]
+	fieldType := strings.TrimSpace(strings.TrimPrefix(raw, fullName))
+	if owner, name, ok := strings.Cut(fullName, "."); ok && name != "" {
+		return StructFieldChange{Owner: owner, Name: name, Type: fieldType, Status: ch.Status}, true
+	}
+	if ch.Scope == "" || ch.Name == "" {
+		return StructFieldChange{}, false
+	}
+	return StructFieldChange{
+		Owner:  ch.Scope,
+		Name:   ch.Name,
+		Type:   fieldType,
+		Status: ch.Status,
+	}, true
+}
+
+func buildStructFieldDiffBody(fields []StructFieldChange, status string) template.HTML {
+	prefix, class := diffPrefix(status)
+	width := maxFieldNameWidth(fields)
+	var b strings.Builder
+	b.WriteString(`<span class="diff-context">  {` + "\n</span>")
+	for _, f := range fields {
+		writeDiffLine(&b, class, prefix, alignField(f.Name, f.Type, width))
+	}
+	b.WriteString(`<span class="diff-context">  }</span>`)
+	return template.HTML(b.String())
+}
+
+func buildFallbackFieldBody(changes []SymbolChange, status string) template.HTML {
+	prefix, class := diffPrefix(status)
+	var b strings.Builder
+	for _, ch := range changes {
+		writeDiffLine(
+			&b,
+			class,
+			prefix,
+			abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old))),
+		)
+	}
+	return template.HTML(b.String())
+}
+
+func buildTypeDefBlock(ch SymbolChange, status string) typeDefBlockData {
+	body := ch.TypeBody
+	count := len(body.Fields) + len(body.Methods)
+	return typeDefBlockData{
+		KindLabel:  "type " + ch.Name + " " + body.Kind,
+		CountClass: countClass(status),
+		Count:      count,
+		Body:       buildTypeBody(ch.Name, body, status),
+	}
+}
+
+func buildTypeBody(name string, body *APITypeBody, status string) template.HTML {
+	prefix, class := diffPrefix(status)
+	var b strings.Builder
+	switch body.Kind {
+	case "struct":
+		b.WriteString(
+			`<span class="diff-context">type ` + template.HTMLEscapeString(
+				name,
+			) + " struct {\n</span>",
+		)
+		width := maxRawFieldNameWidth(body.Fields)
+		for _, raw := range body.Fields {
+			fieldName, fieldType := splitNameType(abbreviateImportPaths(raw))
+			writeDiffLine(&b, class, prefix, alignField(fieldName, fieldType, width))
+		}
+		b.WriteString(`<span class="diff-context">}</span>`)
+	case "interface":
+		b.WriteString(
+			`<span class="diff-context">type ` + template.HTMLEscapeString(
+				name,
+			) + " interface {\n</span>",
+		)
+		for _, method := range body.Methods {
+			writeDiffLine(&b, class, prefix, abbreviateImportPaths(method))
+		}
+		b.WriteString(`<span class="diff-context">}</span>`)
+	}
+	return template.HTML(b.String())
+}
+
+func diffPrefix(status string) (prefix, class string) {
+	if status == "removed" {
+		return "-", "diff-removed"
+	}
+	return "+", "diff-added"
+}
+
+func countClass(status string) string {
+	if status == "removed" {
+		return "rem"
+	}
+	return "add"
+}
+
+func maxFieldNameWidth(fields []StructFieldChange) int {
 	width := 0
 	for _, f := range fields {
 		if len(f.Name) > width {
 			width = len(f.Name)
 		}
 	}
-
-	var b strings.Builder
-	b.WriteString(`<span class="diff-context">  {` + "\n</span>")
-	for _, f := range fields {
-		pad := width - len(f.Name) + 1
-		if pad < 1 {
-			pad = 1
-		}
-		b.WriteString(`<span class="` + spanClass + `">`)
-		b.WriteString(prefix + "   ")
-		b.WriteString(template.HTMLEscapeString(f.Name))
-		b.WriteString(strings.Repeat(" ", pad))
-		b.WriteString(template.HTMLEscapeString(f.Type))
-		b.WriteString("\n</span>")
-	}
-	b.WriteString(`<span class="diff-context">  }` + "</span>")
-	return template.HTML(b.String())
+	return width
 }
 
-func buildFallbackFieldBody(changes []SymbolChange, status string) template.HTML {
-	prefix := "+"
-	spanClass := "diff-added"
-	if status == "removed" {
-		prefix = "-"
-		spanClass = "diff-removed"
+func maxRawFieldNameWidth(fields []string) int {
+	width := 0
+	for _, raw := range fields {
+		name, _ := splitNameType(abbreviateImportPaths(raw))
+		if len(name) > width {
+			width = len(name)
+		}
 	}
-	var b strings.Builder
-	for _, ch := range changes {
-		raw := abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
-		b.WriteString(`<span class="` + spanClass + `">`)
-		b.WriteString(prefix + "   ")
-		b.WriteString(template.HTMLEscapeString(raw))
-		b.WriteString("\n</span>")
-	}
-	return template.HTML(b.String())
+	return width
 }
 
-// -----------------------------------------------------------------------
-// Type definition blocks (whole struct / interface added or removed)
-// -----------------------------------------------------------------------
-
-func buildTypeDefBlock(ch SymbolChange, status string) typeDefBlockData {
-	body := ch.TypeBody
-	prefix := "+"
-	spanClass := "diff-added"
-	countClass := "add"
-	if status == "removed" {
-		prefix = "-"
-		spanClass = "diff-removed"
-		countClass = "rem"
+func alignField(name, typ string, width int) string {
+	if typ == "" {
+		return name
 	}
-
-	var b strings.Builder
-
-	switch body.Kind {
-	case "struct":
-		b.WriteString(`<span class="diff-context">type `)
-		b.WriteString(template.HTMLEscapeString(ch.Name))
-		b.WriteString(" struct {\n</span>")
-
-		// Align field name column.
-		width := 0
-		for _, f := range body.Fields {
-			parts := strings.Fields(abbreviateImportPaths(f))
-			if len(parts) > 0 && len(parts[0]) > width {
-				width = len(parts[0])
-			}
-		}
-		for _, f := range body.Fields {
-			f = abbreviateImportPaths(f)
-			parts := strings.Fields(f)
-			if len(parts) == 0 {
-				continue
-			}
-			name := parts[0]
-			typ := strings.TrimSpace(strings.TrimPrefix(f, name))
-			pad := width - len(name) + 1
-			if pad < 1 {
-				pad = 1
-			}
-			b.WriteString(`<span class="` + spanClass + `">`)
-			b.WriteString(prefix + "   ")
-			b.WriteString(template.HTMLEscapeString(name))
-			b.WriteString(strings.Repeat(" ", pad))
-			b.WriteString(template.HTMLEscapeString(typ))
-			b.WriteString("\n</span>")
-		}
-		b.WriteString(`<span class="diff-context">}</span>`)
-
-	case "interface":
-		b.WriteString(`<span class="diff-context">type `)
-		b.WriteString(template.HTMLEscapeString(ch.Name))
-		b.WriteString(" interface {\n</span>")
-		for _, m := range body.Methods {
-			sig := abbreviateImportPaths(m)
-			b.WriteString(`<span class="` + spanClass + `">`)
-			b.WriteString(prefix + "   ")
-			b.WriteString(template.HTMLEscapeString(sig))
-			b.WriteString("\n</span>")
-		}
-		b.WriteString(`<span class="diff-context">}</span>`)
+	pad := width - len(name) + 1
+	if pad < 1 {
+		pad = 1
 	}
-
-	kindLabel := body.Kind // "struct" or "interface"
-	memberCount := len(body.Fields) + len(body.Methods)
-
-	return typeDefBlockData{
-		KindLabel:  "type " + ch.Name + " " + kindLabel,
-		CountClass: countClass,
-		Count:      memberCount,
-		Body:       template.HTML(b.String()),
-	}
+	return name + strings.Repeat(" ", pad) + typ
 }
 
-// -----------------------------------------------------------------------
-// Data pipeline (collect → merge → summarize)
-// -----------------------------------------------------------------------
+func splitNameType(raw string) (name, typ string) {
+	parts := strings.Fields(raw)
+	if len(parts) == 0 {
+		return "", ""
+	}
+	name = parts[0]
+	typ = strings.TrimSpace(strings.TrimPrefix(raw, name))
+	return name, typ
+}
 
 func (d *APIDiff) collectSymbolChanges() []SymbolChange {
 	var changes []SymbolChange
-
-	addPkgChanges := func(status string, xs []string) {
+	add := func(status, kind string, xs []DiffItem) {
 		for _, x := range xs {
-			ch := SymbolChange{
-				Package: x,
-				Kind:    "Package",
-				Name:    shortPackage(x),
-				Old:     x,
-				New:     x,
-				Status:  status,
-			}
-			if status == "added" {
-				ch.Old = ""
-			} else {
-				ch.New = ""
-			}
-			changes = append(changes, ch)
+			changes = append(changes, newSymbolChange(status, kind, x))
 		}
 	}
 
-	addChanges := func(status, kind string, xs []DiffItem) {
-		for _, x := range xs {
-			cleanKind := cleanAPILabel(kind, x.Label)
-			scope := apiScope(x.Label)
-			name := apiSymbolName(x.Signature)
-			value := x.Signature
-
-			ch := SymbolChange{
-				Package:  x.Path,
-				Kind:     cleanKind,
-				Scope:    scope,
-				Name:     displayAPIName(cleanKind, scope, name),
-				Old:      value,
-				New:      value,
-				Status:   status,
-				TypeBody: x.TypeBody,
-			}
-			if status == "added" {
-				ch.Old = ""
-			} else {
-				ch.New = ""
-			}
-			changes = append(changes, ch)
-		}
-	}
-
-	addPkgChanges("added", d.PackagesAdded)
-	addPkgChanges("removed", d.PackagesRemoved)
-	addChanges("added", "Func", d.FuncsAdded)
-	addChanges("removed", "Func", d.FuncsRemoved)
-	addChanges("added", "Var", d.VarsAdded)
-	addChanges("removed", "Var", d.VarsRemoved)
-	addChanges("added", "Const", d.ConstsAdded)
-	addChanges("removed", "Const", d.ConstsRemoved)
-	addChanges("added", "Type", d.TypesAdded)
-	addChanges("removed", "Type", d.TypesRemoved)
-	addChanges("added", "Field", d.FieldsAdded)
-	addChanges("removed", "Field", d.FieldsRemoved)
-	addChanges("added", "Method", d.MethodsAdded)
-	addChanges("removed", "Method", d.MethodsRemoved)
+	add("added", "Func", d.FuncsAdded)
+	add("removed", "Func", d.FuncsRemoved)
+	add("added", "Var", d.VarsAdded)
+	add("removed", "Var", d.VarsRemoved)
+	add("added", "Const", d.ConstsAdded)
+	add("removed", "Const", d.ConstsRemoved)
+	add("added", "Type", d.TypesAdded)
+	add("removed", "Type", d.TypesRemoved)
+	add("added", "Field", d.FieldsAdded)
+	add("removed", "Field", d.FieldsRemoved)
+	add("added", "Method", d.MethodsAdded)
+	add("removed", "Method", d.MethodsRemoved)
 
 	return mergeIntoChangedSymbols(changes)
+}
+
+func newSymbolChange(status, fallbackKind string, item DiffItem) SymbolChange {
+	kind := cleanAPILabel(fallbackKind, item.Label)
+	scope := apiScope(item.Label)
+	name := apiSymbolName(item.Signature)
+	change := SymbolChange{
+		Package:  item.Path,
+		Kind:     kind,
+		Scope:    scope,
+		Name:     displayAPIName(kind, scope, name),
+		Old:      item.Signature,
+		New:      item.Signature,
+		Status:   status,
+		TypeBody: item.TypeBody,
+	}
+	if status == "added" {
+		change.Old = ""
+	} else {
+		change.New = ""
+	}
+	return change
 }
 
 func mergeIntoChangedSymbols(raw []SymbolChange) []SymbolChange {
 	added := make(map[string]SymbolChange)
 	removed := make(map[string]SymbolChange)
-	var out []SymbolChange
-
 	for _, ch := range raw {
-		key := ch.changeKey()
 		switch ch.Status {
 		case "added":
-			added[key] = ch
+			added[ch.changeKey()] = ch
 		case "removed":
-			removed[key] = ch
+			removed[ch.changeKey()] = ch
 		}
 	}
 
-	usedAdded := make(map[string]bool)
-	usedRemoved := make(map[string]bool)
+	used := make(map[string]bool)
+	out := make([]SymbolChange, 0, len(raw))
 	for key, old := range removed {
 		newer, ok := added[key]
-		if !ok || old.Kind == "Package" {
+		if !ok {
 			continue
 		}
-		out = append(out, SymbolChange{
-			Package: old.Package,
-			Kind:    old.Kind,
-			Scope:   old.Scope,
-			Name:    old.Name,
-			Old:     old.Old,
-			New:     newer.New,
-			Status:  "changed",
-		})
-		usedAdded[key] = true
-		usedRemoved[key] = true
+		out = append(
+			out,
+			SymbolChange{
+				Package: old.Package,
+				Kind:    old.Kind,
+				Scope:   old.Scope,
+				Name:    old.Name,
+				Old:     old.Old,
+				New:     newer.New,
+				Status:  "changed",
+			},
+		)
+		used[key] = true
 	}
-
 	for _, ch := range raw {
-		key := ch.changeKey()
-		if usedAdded[key] || usedRemoved[key] {
+		if used[ch.changeKey()] {
 			continue
 		}
 		out = append(out, ch)
 	}
-
-	sort.Slice(out, func(i, j int) bool {
-		if statusRank(out[i].Status) != statusRank(out[j].Status) {
-			return statusRank(out[i].Status) < statusRank(out[j].Status)
-		}
-		if out[i].Package != out[j].Package {
-			return out[i].Package < out[j].Package
-		}
-		if kindRank(out[i].Kind) != kindRank(out[j].Kind) {
-			return kindRank(out[i].Kind) < kindRank(out[j].Kind)
-		}
-		return out[i].Name < out[j].Name
-	})
+	sortChanges(out)
 	return out
 }
 
 func (ch SymbolChange) changeKey() string {
-	return ch.Package + "\x00" + ch.Kind + "\x00" + ch.Scope + "\x00" + apiSymbolName(firstNonEmpty(ch.New, ch.Old))
+	return ch.Package + "\x00" + ch.Kind + "\x00" + ch.Scope + "\x00" + apiSymbolName(
+		firstNonEmpty(ch.New, ch.Old),
+	)
 }
 
-func summarizeOverall(changes []SymbolChange, changedPackages int) overallSummary {
+func summarizeOverall(packages []PackageChangeSummary) overallSummary {
 	var s overallSummary
-	s.ChangedPackages = changedPackages
-	for _, ch := range changes {
-		s.Total++
-		switch ch.Status {
-		case "changed":
-			s.Changed++
-			s.Breaking++
-		case "removed":
-			s.Removed++
-			s.Breaking++
-			if ch.Kind == "Package" {
-				s.PackagesRemoved++
-			}
-		case "added":
-			s.Added++
-			if ch.Kind == "Package" {
-				s.PackagesAdded++
-			}
-		}
+	s.ChangedPackages = len(packages)
+	for _, p := range packages {
+		s.Breaking += p.Breaking
+		s.Changed += p.Changed
+		s.Removed += p.Removed
+		s.Added += p.Added
+		s.Total += p.Total
 	}
 	return s
 }
@@ -933,30 +733,28 @@ func summarizeOverall(changes []SymbolChange, changedPackages int) overallSummar
 func summarizeByPackage(changes []SymbolChange) []PackageChangeSummary {
 	byPkg := make(map[string]*PackageChangeSummary)
 	for _, ch := range changes {
-		pkg := ch.Package
-		if pkg == "" {
-			pkg = "unknown"
+		pkg := defaultString(ch.Package, "unknown")
+		summary := byPkg[pkg]
+		if summary == nil {
+			summary = &PackageChangeSummary{Package: pkg}
+			byPkg[pkg] = summary
 		}
-		s, ok := byPkg[pkg]
-		if !ok {
-			s = &PackageChangeSummary{Package: pkg}
-			byPkg[pkg] = s
-		}
-		s.Total++
+		summary.Total++
 		switch ch.Status {
 		case "changed":
-			s.Changed++
-			s.Breaking++
+			summary.Changed++
+			summary.Breaking++
 		case "removed":
-			s.Removed++
-			s.Breaking++
+			summary.Removed++
+			summary.Breaking++
 		case "added":
-			s.Added++
+			summary.Added++
 		}
 	}
+
 	out := make([]PackageChangeSummary, 0, len(byPkg))
-	for _, s := range byPkg {
-		out = append(out, *s)
+	for _, summary := range byPkg {
+		out = append(out, *summary)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Breaking != out[j].Breaking {
@@ -970,54 +768,77 @@ func summarizeByPackage(changes []SymbolChange) []PackageChangeSummary {
 	return out
 }
 
-// -----------------------------------------------------------------------
-// Field parsing helpers
-// -----------------------------------------------------------------------
-
-func parseFieldChange(ch SymbolChange) (StructFieldChange, bool) {
-	raw := abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
-	if raw == "" {
-		return StructFieldChange{}, false
-	}
-	parts := strings.Fields(raw)
-	if len(parts) == 0 {
-		return StructFieldChange{}, false
-	}
-	fullName := parts[0]
-	fieldType := strings.TrimSpace(strings.TrimPrefix(raw, fullName))
-	dot := strings.LastIndex(fullName, ".")
-	if dot < 0 || dot+1 >= len(fullName) {
-		if ch.Scope == "" || ch.Name == "" {
-			return StructFieldChange{}, false
-		}
-		return StructFieldChange{Owner: ch.Scope, Name: ch.Name, Type: fieldType, Status: ch.Status}, true
-	}
-	return StructFieldChange{Owner: fullName[:dot], Name: fullName[dot+1:], Type: fieldType, Status: ch.Status}, true
-}
-
-func groupFieldsByOwner(changes []SymbolChange, status string) map[string][]StructFieldChange {
-	out := make(map[string][]StructFieldChange)
+func groupChangesByPackage(changes []SymbolChange) map[string][]SymbolChange {
+	out := make(map[string][]SymbolChange)
 	for _, ch := range changes {
-		if ch.Status != status || ch.Kind != "Field" {
-			continue
-		}
-		f, ok := parseFieldChange(ch)
-		if !ok {
-			continue
-		}
-		out[f.Owner] = append(out[f.Owner], f)
-	}
-	for owner := range out {
-		sort.Slice(out[owner], func(i, j int) bool {
-			return out[owner][i].Name < out[owner][j].Name
-		})
+		out[ch.Package] = append(out[ch.Package], ch)
 	}
 	return out
 }
 
-// -----------------------------------------------------------------------
-// Signature formatting
-// -----------------------------------------------------------------------
+func groupChangesByKind(changes []SymbolChange) map[string][]SymbolChange {
+	out := make(map[string][]SymbolChange)
+	for _, ch := range changes {
+		out[ch.Kind] = append(out[ch.Kind], ch)
+	}
+	return out
+}
+
+func filterByStatus(changes []SymbolChange, status string) []SymbolChange {
+	out := make([]SymbolChange, 0, len(changes))
+	for _, ch := range changes {
+		if ch.Status == status {
+			out = append(out, ch)
+		}
+	}
+	return out
+}
+
+func hasBreakingChanges(changes []SymbolChange) bool {
+	for _, ch := range changes {
+		if ch.Status == "changed" || ch.Status == "removed" {
+			return true
+		}
+	}
+	return false
+}
+
+func sortChanges(changes []SymbolChange) {
+	sort.Slice(changes, func(i, j int) bool {
+		if statusRank(changes[i].Status) != statusRank(changes[j].Status) {
+			return statusRank(changes[i].Status) < statusRank(changes[j].Status)
+		}
+		if changes[i].Package != changes[j].Package {
+			return changes[i].Package < changes[j].Package
+		}
+		if kindRank(changes[i].Kind) != kindRank(changes[j].Kind) {
+			return kindRank(changes[i].Kind) < kindRank(changes[j].Kind)
+		}
+		return changes[i].Name < changes[j].Name
+	})
+}
+
+func sortedKeys[T any](m map[string]T) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func parseConstSignature(sig string) (name, typ, value string) {
+	sig = abbreviateImportPaths(strings.TrimSpace(sig))
+	if idx := strings.Index(sig, " = "); idx >= 0 {
+		value = strings.TrimSpace(sig[idx+3:])
+		sig = sig[:idx]
+	}
+	name, typ = splitNameType(sig)
+	if strings.HasPrefix(typ, "untyped ") {
+		typ = ""
+	}
+	return name, typ, value
+}
 
 func formatAPIValue(kind, scope, raw string) string {
 	raw = abbreviateImportPaths(strings.TrimSpace(raw))
@@ -1035,8 +856,6 @@ func formatAPIValue(kind, scope, raw string) string {
 		return "const " + raw
 	case "Type":
 		return "type " + raw
-	case "Package":
-		return raw
 	default:
 		return raw
 	}
@@ -1047,59 +866,62 @@ func formatCallable(prefix, scope, name, raw string) string {
 	if idx < 0 {
 		return prefix + " " + raw
 	}
-	sig := raw[idx:]
-	params, rest, ok := splitFirstParen(sig)
+	params, rest, ok := splitFirstParen(raw[idx:])
 	if !ok {
 		return prefix + " " + raw
 	}
-	results := ""
-	rest = strings.TrimSpace(rest)
-	if strings.HasPrefix(rest, "->") {
-		resRaw := strings.TrimSpace(strings.TrimPrefix(rest, "->"))
-		if strings.HasPrefix(resRaw, "(") {
-			res, _, ok := splitFirstParen(resRaw)
-			if ok {
-				resParts := splitTopLevel(res)
-				switch len(resParts) {
-				case 0:
-				case 1:
-					results = " " + resParts[0]
-				default:
-					results = " (" + strings.Join(resParts, ", ") + ")"
-				}
-			}
-		}
-	}
-
+	result := formatResults(rest)
 	parts := splitTopLevel(params)
-	funcHead := prefix + " "
+	head := prefix + " "
 	if scope != "" {
-		funcHead += "(" + abbreviateImportPaths(scope) + ") "
+		head += "(" + abbreviateImportPaths(scope) + ") "
 	}
-	funcHead += name
+	head += name
 
-	oneLine := funcHead + "(" + strings.Join(parts, ", ") + ")" + results
+	oneLine := head + "(" + strings.Join(parts, ", ") + ")" + result
 	if len(oneLine) <= 96 && len(parts) <= 1 {
 		return oneLine
 	}
+
 	var b strings.Builder
-	b.WriteString(funcHead)
-	b.WriteString("(\n")
-	for _, p := range parts {
-		if p == "" {
-			continue
+	b.WriteString(head + "(\n")
+	for _, part := range parts {
+		if part != "" {
+			b.WriteString("    " + part + ",\n")
 		}
-		b.WriteString("    ")
-		b.WriteString(p)
-		b.WriteString(",\n")
 	}
-	b.WriteString(")")
-	b.WriteString(results)
+	b.WriteString(")" + result)
 	return b.String()
 }
 
+func formatResults(rest string) string {
+	rest = strings.TrimSpace(rest)
+	if !strings.HasPrefix(rest, "->") {
+		return ""
+	}
+	resRaw := strings.TrimSpace(strings.TrimPrefix(rest, "->"))
+	if !strings.HasPrefix(resRaw, "(") {
+		return " " + resRaw
+	}
+	resultText, _, ok := splitFirstParen(resRaw)
+	if !ok {
+		return ""
+	}
+	parts := splitTopLevel(resultText)
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return " " + parts[0]
+	default:
+		return " (" + strings.Join(parts, ", ") + ")"
+	}
+}
+
 func formatField(scope, raw string) string {
-	name, typ := compactField(SymbolChange{Kind: "Field", Scope: scope, Name: apiSymbolName(raw), New: raw})
+	name, typ := compactField(
+		SymbolChange{Kind: "Field", Scope: scope, Name: apiSymbolName(raw), New: raw},
+	)
 	if typ == "" {
 		return name
 	}
@@ -1153,41 +975,12 @@ func splitTopLevel(s string) []string {
 			}
 		}
 	}
-	out = append(out, strings.TrimSpace(s[start:]))
-	return out
-}
-
-// -----------------------------------------------------------------------
-// Compact display helpers
-// -----------------------------------------------------------------------
-
-func formatCompactSymbol(ch SymbolChange, _ string) string {
-	switch ch.Kind {
-	case "Type", "Package":
-		return ch.Name
-	case "Var", "Const":
-		name, _ := compactTypedSymbol(ch)
-		return name
-	case "Field":
-		name, _ := compactField(ch)
-		return name
-	case "Method":
-		return compactMethod(ch)
-	case "Func":
-		return compactFunc(ch)
-	default:
-		return ch.Name
-	}
+	return append(out, strings.TrimSpace(s[start:]))
 }
 
 func compactField(ch SymbolChange) (name string, typ string) {
 	raw := abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
-	parts := strings.Fields(raw)
-	if len(parts) == 0 {
-		return compactScopedName(ch.Scope, ch.Name), ""
-	}
-	fieldName := parts[0]
-	fieldType := strings.TrimSpace(strings.TrimPrefix(raw, fieldName))
+	fieldName, fieldType := splitNameType(raw)
 	if strings.Contains(fieldName, ".") {
 		return fieldName, fieldType
 	}
@@ -1195,21 +988,25 @@ func compactField(ch SymbolChange) (name string, typ string) {
 }
 
 func compactTypedSymbol(ch SymbolChange) (name string, typ string) {
-	raw := abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
-	parts := strings.Fields(raw)
-	if len(parts) == 0 {
-		return ch.Name, ""
-	}
-	name = parts[0]
-	typ = strings.TrimSpace(strings.TrimPrefix(raw, name))
-	return name, typ
+	return splitNameType(abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old))))
 }
 
 func compactFunc(ch SymbolChange) string {
+	return compactCallable(ch, false)
+}
+
+func compactMethod(ch SymbolChange) string {
+	return compactCallable(ch, true)
+}
+
+func compactCallable(ch SymbolChange, includeScope bool) string {
 	raw := abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
 	name := apiSymbolName(raw)
 	if name == "" || name == "unknown" {
 		name = ch.Name
+	}
+	if includeScope && ch.Scope != "" && !strings.Contains(name, ".") {
+		name = ch.Scope + "." + name
 	}
 	params, results := extractCallableSignatureParts(raw)
 	if params == "" && results == "" {
@@ -1218,30 +1015,10 @@ func compactFunc(ch SymbolChange) string {
 	return name + "(" + params + ")" + results
 }
 
-func compactMethod(ch SymbolChange) string {
-	raw := abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
-	name := apiSymbolName(raw)
-	if name == "" || name == "unknown" {
-		name = ch.Name
-	}
-	fullName := name
-	if ch.Scope != "" && !strings.Contains(name, ".") {
-		fullName = ch.Scope + "." + name
-	}
-	params, results := extractCallableSignatureParts(raw)
-	if params == "" && results == "" {
-		return fullName + "(...)"
-	}
-	return fullName + "(" + params + ")" + results
-}
-
 func compactScopedName(scope, name string) string {
 	name = strings.TrimSpace(name)
 	scope = strings.TrimSpace(scope)
-	if scope == "" || name == "" {
-		return name
-	}
-	if strings.HasPrefix(name, scope+".") {
+	if scope == "" || name == "" || strings.HasPrefix(name, scope+".") {
 		return name
 	}
 	return scope + "." + name
@@ -1252,33 +1029,11 @@ func extractCallableSignatureParts(raw string) (params string, results string) {
 	if idx < 0 {
 		return "", ""
 	}
-	sig := raw[idx:]
-	paramText, rest, ok := splitFirstParen(sig)
+	paramText, rest, ok := splitFirstParen(raw[idx:])
 	if !ok {
 		return "", ""
 	}
-	params = compactParamList(splitTopLevel(paramText))
-	rest = strings.TrimSpace(rest)
-	if !strings.HasPrefix(rest, "->") {
-		return params, ""
-	}
-	resRaw := strings.TrimSpace(strings.TrimPrefix(rest, "->"))
-	if !strings.HasPrefix(resRaw, "(") {
-		return params, " " + resRaw
-	}
-	resultText, _, ok := splitFirstParen(resRaw)
-	if !ok {
-		return params, ""
-	}
-	resultParts := splitTopLevel(resultText)
-	switch len(resultParts) {
-	case 0:
-		return params, ""
-	case 1:
-		return params, " " + resultParts[0]
-	default:
-		return params, " (" + strings.Join(resultParts, ", ") + ")"
-	}
+	return compactParamList(splitTopLevel(paramText)), formatResults(rest)
 }
 
 func compactParamList(parts []string) string {
@@ -1286,38 +1041,30 @@ func compactParamList(parts []string) string {
 		return ""
 	}
 	const maxInline = 72
-	s := strings.Join(parts, ", ")
-	if len(s) <= maxInline {
-		return s
+	joined := strings.Join(parts, ", ")
+	if len(joined) <= maxInline {
+		return joined
 	}
-	var short []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		fields := strings.Fields(p)
+	short := make([]string, 0, len(parts))
+	for _, part := range parts {
+		fields := strings.Fields(strings.TrimSpace(part))
 		if len(fields) >= 2 {
 			short = append(short, fields[len(fields)-1])
-		} else {
-			short = append(short, p)
+		} else if len(fields) == 1 {
+			short = append(short, fields[0])
 		}
 	}
-	s = strings.Join(short, ", ")
-	if len(s) <= maxInline {
-		return s
+	joined = strings.Join(short, ", ")
+	if len(joined) <= maxInline {
+		return joined
 	}
 	return "..."
 }
 
-// -----------------------------------------------------------------------
-// Import path abbreviation
-// -----------------------------------------------------------------------
+var importPathRE = regexp.MustCompile(
+	`([A-Za-z0-9_./~-]+/[A-Za-z0-9_./~-]+)\.([A-Za-z_][A-Za-z0-9_]*)`,
+)
 
-var importPathRE = regexp.MustCompile(`([A-Za-z0-9_./~-]+/[A-Za-z0-9_./~-]+)\.([A-Za-z_][A-Za-z0-9_]*)`)
-
-// abbreviateImportPaths shortens fully-qualified import paths in type strings
-// to just the last path segment, e.g. "github.com/foo/bar.Baz" → "bar.Baz".
 func abbreviateImportPaths(s string) string {
 	return importPathRE.ReplaceAllStringFunc(s, func(match string) string {
 		idx := strings.LastIndex(match, ".")
@@ -1326,33 +1073,25 @@ func abbreviateImportPaths(s string) string {
 		}
 		path := match[:idx]
 		ident := match[idx+1:]
-		pkg := path
-		if slash := strings.LastIndex(pkg, "/"); slash >= 0 {
-			pkg = pkg[slash+1:]
+		if slash := strings.LastIndex(path, "/"); slash >= 0 {
+			path = path[slash+1:]
 		}
-		return pkg + "." + ident
+		return path + "." + ident
 	})
 }
 
-// -----------------------------------------------------------------------
-// Label / name utilities
-// -----------------------------------------------------------------------
-
 func cleanAPILabel(fallback, label string) string {
-	if strings.TrimSpace(label) == "" {
+	label = strings.ReplaceAll(strings.TrimSpace(label), "`", "")
+	if label == "" {
 		return fallback
 	}
-	label = strings.ReplaceAll(label, "`", "")
 	if strings.Contains(label, "Fields") {
 		return "Field"
 	}
 	if strings.Contains(label, "Methods") {
 		return "Method"
 	}
-	if strings.HasSuffix(label, "s") {
-		label = strings.TrimSuffix(label, "s")
-	}
-	return label
+	return strings.TrimSuffix(label, "s")
 }
 
 func apiScope(label string) string {
@@ -1375,26 +1114,21 @@ func apiSymbolName(x string) string {
 	if idx := strings.Index(x, "("); idx > 0 {
 		return x[:idx]
 	}
-	if idx := strings.IndexByte(x, ' '); idx > 0 {
-		name := x[:idx]
-		if dot := strings.LastIndex(name, "."); dot >= 0 && dot+1 < len(name) {
-			return name[dot+1:]
-		}
-		return name
+	name, _ := splitNameType(x)
+	if dot := strings.LastIndex(name, "."); dot >= 0 && dot+1 < len(name) {
+		return name[dot+1:]
 	}
-	if dot := strings.LastIndex(x, "."); dot >= 0 && dot+1 < len(x) {
-		return x[dot+1:]
+	if name != "" {
+		return name
 	}
 	return x
 }
 
 func displayAPIName(kind, scope, name string) string {
-	switch kind {
-	case "Field", "Method":
+	if kind == "Field" || kind == "Method" {
 		return compactScopedName(scope, name)
-	default:
-		return name
 	}
+	return name
 }
 
 func shortPackage(pkg string) string {
@@ -1410,9 +1144,7 @@ func anchorID(s string) string {
 	var b strings.Builder
 	for _, r := range s {
 		switch {
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r)
-		case r >= '0' && r <= '9':
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
 			b.WriteRune(r)
 		default:
 			b.WriteByte('-')
@@ -1435,34 +1167,20 @@ func statusRank(status string) int {
 }
 
 func kindRank(kind string) int {
-	switch kind {
-	case "Package":
-		return 0
-	case "Type":
-		return 1
-	case "Func":
-		return 2
-	case "Method":
-		return 3
-	case "Field":
-		return 4
-	case "Var":
-		return 5
-	case "Const":
-		return 6
-	default:
-		return 7
+	for i, candidate := range apiKindOrder() {
+		if kind == candidate {
+			return i
+		}
 	}
+	return 99
 }
 
 func apiKindOrder() []string {
-	return []string{"Package", "Type", "Func", "Method", "Field", "Var", "Const"}
+	return []string{"Type", "Func", "Method", "Field", "Var", "Const"}
 }
 
 func pluralKind(kind string) string {
 	switch kind {
-	case "Package":
-		return "Packages"
 	case "Type":
 		return "Types"
 	case "Func":

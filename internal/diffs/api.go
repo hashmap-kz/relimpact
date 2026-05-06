@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -47,23 +48,21 @@ type DiffItem struct {
 	TypeBody  *APITypeBody // non-nil only for whole-type adds/removes
 }
 
-const apiCacheSchemaVersion = "v2"
+const apiCacheSchemaVersion = "v3"
 
 type APIDiff struct {
-	PackagesAdded   []string   `json:"packages_added,omitempty"`
-	PackagesRemoved []string   `json:"packages_removed,omitempty"`
-	FuncsAdded      []DiffItem `json:"funcs_added,omitempty"`
-	FuncsRemoved    []DiffItem `json:"funcs_removed,omitempty"`
-	VarsAdded       []DiffItem `json:"vars_added,omitempty"`
-	VarsRemoved     []DiffItem `json:"vars_removed,omitempty"`
-	ConstsAdded     []DiffItem `json:"consts_added,omitempty"`
-	ConstsRemoved   []DiffItem `json:"consts_removed,omitempty"`
-	TypesAdded      []DiffItem `json:"types_added,omitempty"`
-	TypesRemoved    []DiffItem `json:"types_removed,omitempty"`
-	FieldsAdded     []DiffItem `json:"fields_added,omitempty"`
-	FieldsRemoved   []DiffItem `json:"fields_removed,omitempty"`
-	MethodsAdded    []DiffItem `json:"methods_added,omitempty"`
-	MethodsRemoved  []DiffItem `json:"methods_removed,omitempty"`
+	FuncsAdded     []DiffItem `json:"funcs_added,omitempty"`
+	FuncsRemoved   []DiffItem `json:"funcs_removed,omitempty"`
+	VarsAdded      []DiffItem `json:"vars_added,omitempty"`
+	VarsRemoved    []DiffItem `json:"vars_removed,omitempty"`
+	ConstsAdded    []DiffItem `json:"consts_added,omitempty"`
+	ConstsRemoved  []DiffItem `json:"consts_removed,omitempty"`
+	TypesAdded     []DiffItem `json:"types_added,omitempty"`
+	TypesRemoved   []DiffItem `json:"types_removed,omitempty"`
+	FieldsAdded    []DiffItem `json:"fields_added,omitempty"`
+	FieldsRemoved  []DiffItem `json:"fields_removed,omitempty"`
+	MethodsAdded   []DiffItem `json:"methods_added,omitempty"`
+	MethodsRemoved []DiffItem `json:"methods_removed,omitempty"`
 }
 
 func getCacheDir() string {
@@ -197,6 +196,12 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 			}
 		}
 
+		for name, typ := range apkg.Types {
+			typ.Fields = uniqueSorted(typ.Fields)
+			typ.Methods = uniqueSorted(typ.Methods)
+			apkg.Types[name] = typ
+		}
+
 		api[pkg.PkgPath] = apkg
 	}
 
@@ -211,6 +216,23 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 	}
 
 	return api
+}
+
+func uniqueSorted(xs []string) []string {
+	if len(xs) == 0 {
+		return xs
+	}
+	seen := make(map[string]bool, len(xs))
+	out := xs[:0]
+	for _, x := range xs {
+		if seen[x] {
+			continue
+		}
+		seen[x] = true
+		out = append(out, x)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func signatureString(sig *types.Signature) string {
@@ -236,87 +258,88 @@ func signatureString(sig *types.Signature) string {
 	return b.String()
 }
 
+func emptyAPIPackage() APIPackage {
+	return APIPackage{
+		Funcs:  []string{},
+		Vars:   []string{},
+		Consts: []string{},
+		Types:  map[string]APIType{},
+	}
+}
+
 func DiffAPI(oldAPI, newAPI map[string]APIPackage) *APIDiff {
 	apiDiffResult := &APIDiff{}
 
 	for path, newPkg := range newAPI {
 		oldPkg, ok := oldAPI[path]
-
-		// packages +
 		if !ok {
-			apiDiffResult.PackagesAdded = append(apiDiffResult.PackagesAdded, path)
-			continue
+			oldPkg = emptyAPIPackage()
 		}
-
-		// Funcs
-		funcsAdd, funcsRem := diffList("Funcs", path, oldPkg.Funcs, newPkg.Funcs)
-		apiDiffResult.FuncsAdded = append(apiDiffResult.FuncsAdded, funcsAdd...)
-		apiDiffResult.FuncsRemoved = append(apiDiffResult.FuncsRemoved, funcsRem...)
-
-		// Vars
-		varsAdded, varsRemoved := diffList("Vars", path, oldPkg.Vars, newPkg.Vars)
-		apiDiffResult.VarsAdded = append(apiDiffResult.VarsAdded, varsAdded...)
-		apiDiffResult.VarsRemoved = append(apiDiffResult.VarsRemoved, varsRemoved...)
-
-		// Consts
-		constsAdded, constsRemoved := diffList("Consts", path, oldPkg.Consts, newPkg.Consts)
-		apiDiffResult.ConstsAdded = append(apiDiffResult.ConstsAdded, constsAdded...)
-		apiDiffResult.ConstsRemoved = append(apiDiffResult.ConstsRemoved, constsRemoved...)
-
-		// Types
-		for tname, newType := range newPkg.Types {
-			oldType, ok := oldPkg.Types[tname]
-			if !ok {
-				// whole type added — carry the full definition so the report can render it
-				apiDiffResult.TypesAdded = append(apiDiffResult.TypesAdded, DiffItem{
-					Label:     "Type",
-					Path:      path,
-					Signature: tname,
-					TypeBody: &APITypeBody{
-						Kind:    newType.Kind,
-						Fields:  newType.Fields,
-						Methods: newType.Methods,
-					},
-				})
-				continue
-			}
-
-			// fields
-			fieldsAdded, fieldsRemoved := diffList(fmt.Sprintf("Type `%s` Fields", tname), path, oldType.Fields, newType.Fields)
-			apiDiffResult.FieldsAdded = append(apiDiffResult.FieldsAdded, fieldsAdded...)
-			apiDiffResult.FieldsRemoved = append(apiDiffResult.FieldsRemoved, fieldsRemoved...)
-
-			// methods
-			methodsAdded, methodsRemoved := diffList(fmt.Sprintf("Type `%s` Methods", tname), path, oldType.Methods, newType.Methods)
-			apiDiffResult.MethodsAdded = append(apiDiffResult.MethodsAdded, methodsAdded...)
-			apiDiffResult.MethodsRemoved = append(apiDiffResult.MethodsRemoved, methodsRemoved...)
-		}
-		// types -
-		for tname, oldType := range oldPkg.Types {
-			if _, ok := newPkg.Types[tname]; !ok {
-				// whole type removed — carry the full definition for the report
-				apiDiffResult.TypesRemoved = append(apiDiffResult.TypesRemoved, DiffItem{
-					Label:     "Type",
-					Path:      path,
-					Signature: tname,
-					TypeBody: &APITypeBody{
-						Kind:    oldType.Kind,
-						Fields:  oldType.Fields,
-						Methods: oldType.Methods,
-					},
-				})
-			}
-		}
+		apiDiffResult.addPackageDiff(path, oldPkg, newPkg)
 	}
 
-	// packages -
-	for path := range oldAPI {
-		if _, ok := newAPI[path]; !ok {
-			apiDiffResult.PackagesRemoved = append(apiDiffResult.PackagesRemoved, path)
+	for path, oldPkg := range oldAPI {
+		if _, ok := newAPI[path]; ok {
+			continue
 		}
+		apiDiffResult.addPackageDiff(path, oldPkg, emptyAPIPackage())
 	}
 
 	return apiDiffResult
+}
+
+func (d *APIDiff) addPackageDiff(path string, oldPkg, newPkg APIPackage) {
+	funcsAdded, funcsRemoved := diffList("Funcs", path, oldPkg.Funcs, newPkg.Funcs)
+	d.FuncsAdded = append(d.FuncsAdded, funcsAdded...)
+	d.FuncsRemoved = append(d.FuncsRemoved, funcsRemoved...)
+
+	varsAdded, varsRemoved := diffList("Vars", path, oldPkg.Vars, newPkg.Vars)
+	d.VarsAdded = append(d.VarsAdded, varsAdded...)
+	d.VarsRemoved = append(d.VarsRemoved, varsRemoved...)
+
+	constsAdded, constsRemoved := diffList("Consts", path, oldPkg.Consts, newPkg.Consts)
+	d.ConstsAdded = append(d.ConstsAdded, constsAdded...)
+	d.ConstsRemoved = append(d.ConstsRemoved, constsRemoved...)
+
+	d.addTypeDiffs(path, oldPkg.Types, newPkg.Types)
+}
+
+func (d *APIDiff) addTypeDiffs(path string, oldTypes, newTypes map[string]APIType) {
+	for name, newType := range newTypes {
+		oldType, ok := oldTypes[name]
+		if !ok {
+			d.TypesAdded = append(d.TypesAdded, typeDiffItem("Type", path, name, newType))
+			continue
+		}
+
+		fieldsAdded, fieldsRemoved := diffList(fmt.Sprintf("Type `%s` Fields", name), path, oldType.Fields, newType.Fields)
+		d.FieldsAdded = append(d.FieldsAdded, fieldsAdded...)
+		d.FieldsRemoved = append(d.FieldsRemoved, fieldsRemoved...)
+
+		methodsAdded, methodsRemoved := diffList(fmt.Sprintf("Type `%s` Methods", name), path, oldType.Methods, newType.Methods)
+		d.MethodsAdded = append(d.MethodsAdded, methodsAdded...)
+		d.MethodsRemoved = append(d.MethodsRemoved, methodsRemoved...)
+	}
+
+	for name, oldType := range oldTypes {
+		if _, ok := newTypes[name]; ok {
+			continue
+		}
+		d.TypesRemoved = append(d.TypesRemoved, typeDiffItem("Type", path, name, oldType))
+	}
+}
+
+func typeDiffItem(label, path, name string, typ APIType) DiffItem {
+	return DiffItem{
+		Label:     label,
+		Path:      path,
+		Signature: name,
+		TypeBody: &APITypeBody{
+			Kind:    typ.Kind,
+			Fields:  typ.Fields,
+			Methods: typ.Methods,
+		},
+	}
 }
 
 func diffList(label, path string, oldList, newList []string) (added, removed []DiffItem) {
