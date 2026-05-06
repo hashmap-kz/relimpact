@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/hashmap-kz/relimpact/internal/x/fmtx"
 	"os"
 	"strings"
 
@@ -16,6 +17,7 @@ func main() {
 	greedy := flag.Bool("greedy", false, "Maximum concurrency")
 	dir := flag.String("dir", ".", "Git directory")
 	format := flag.String("format", "markdown", "Report format: markdown or html")
+	outputFile := flag.String("output", "", "Specify output file")
 	flag.Parse()
 
 	if *oldRef == "" || *newRef == "" {
@@ -35,9 +37,19 @@ func main() {
 	// TODO: log level (envs, CLI)
 	loggr.Init(loggr.LevelTrace, "relimpact")
 
+	var report string
 	if *greedy {
-		fmt.Print(cmd.CreateAPIReport(*dir, *oldRef, *newRef, reportFormat))
+		report = cmd.CreateAPIReport(*dir, *oldRef, *newRef, reportFormat)
 	} else {
-		fmt.Print(cmd.CreateAPIReportSequential(*dir, *oldRef, *newRef, reportFormat))
+		report = cmd.CreateAPIReportSequential(*dir, *oldRef, *newRef, reportFormat)
+	}
+
+	if *outputFile != "" {
+		err := os.WriteFile(*outputFile, []byte(report), 0750)
+		if err != nil {
+			fmtx.Fprintf(os.Stderr, "error writing file: %v", err)
+		}
+	} else {
+		fmt.Print(report)
 	}
 }

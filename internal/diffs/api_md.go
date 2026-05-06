@@ -2,6 +2,7 @@ package diffs
 
 import (
 	"fmt"
+	"github.com/hashmap-kz/relimpact/internal/x/fmtx"
 	"sort"
 	"strings"
 )
@@ -48,9 +49,9 @@ func (d *APIDiff) String() string {
 	sb.WriteString("| Kind     | Added | Removed |\n")
 	sb.WriteString("|----------|------:|--------:|\n")
 	for _, s := range summary {
-		hfprintf(&sb, "| %-8s | %5d | %7d |\n", s.Name, s.Added, s.Removed)
+		fmtx.Fprintf(&sb, "| %-8s | %5d | %7d |\n", s.Name, s.Added, s.Removed)
 	}
-	hfprintf(&sb, "| %-8s | %5d | %7d |\n", "Total", totalAdded, totalRemoved)
+	fmtx.Fprintf(&sb, "| %-8s | %5d | %7d |\n", "Total", totalAdded, totalRemoved)
 
 	// Breaking Changes section
 	sb.WriteString("\n### Breaking Changes\n\n")
@@ -59,7 +60,7 @@ func (d *APIDiff) String() string {
 	} else {
 		for _, s := range summary {
 			if s.Removed > 0 {
-				hfprintf(&sb, "- %s Removed: **%d**\n", s.Name, s.Removed)
+				fmtx.Fprintf(&sb, "- %s Removed: **%d**\n", s.Name, s.Removed)
 			}
 		}
 	}
@@ -69,11 +70,11 @@ func (d *APIDiff) String() string {
 		if len(packages) == 0 {
 			return
 		}
-		hfprintf(&sb, "\n### %s\n\n", prefix)
+		fmtx.Fprintf(&sb, "\n### %s\n\n", prefix)
 		sorted := append([]string{}, packages...)
 		sort.Strings(sorted)
 		for _, pkg := range sorted {
-			hfprintf(&sb, "- `%s`\n", pkg)
+			fmtx.Fprintf(&sb, "- `%s`\n", pkg)
 		}
 	}
 
@@ -132,7 +133,7 @@ func (d *APIDiff) String() string {
 		sort.Strings(pkgs)
 
 		for _, pkg := range pkgs {
-			hfprintf(&sb, "\n#### Package `%s`\n\n", pkg)
+			fmtx.Fprintf(&sb, "\n#### Package `%s`\n\n", pkg)
 			sb.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
 
 			labels := make([]string, 0, len(grouped[pkg]))
@@ -142,11 +143,11 @@ func (d *APIDiff) String() string {
 			sort.Strings(labels)
 
 			for _, label := range labels {
-				hfprintf(&sb, "- %s:\n", label)
+				fmtx.Fprintf(&sb, "- %s:\n", label)
 				xs := grouped[pkg][label]
 				sort.Strings(xs)
 				for _, x := range xs {
-					hfprintf(&sb, "    - %s\n", x)
+					fmtx.Fprintf(&sb, "    - %s\n", x)
 				}
 			}
 

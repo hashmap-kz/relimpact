@@ -9,10 +9,9 @@
       "program": "${workspaceFolder}/main.go",
       "buildFlags": "-tags=debug",
       "args": [
-        "--old",
-        "a9697f4",
-        "--new",
-        "HEAD",
+        "--old", "a9697f4",
+        "--new", "HEAD",
+        "--format", "html",
         "--greedy"
       ],
       "env": {
