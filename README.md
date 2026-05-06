@@ -169,6 +169,10 @@ on:
   pull_request:
     branches: [ master ]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   relimpact:
     runs-on: ubuntu-latest
@@ -178,7 +182,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate API report
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Install relimpact
+        run: |
+          go install github.com/hashmap-kz/relimpact@latest
+
+      - name: Generate Markdown API report
+        run: |
+          relimpact \
+            --old="${{ github.event.pull_request.base.sha }}" \
+            --new="${{ github.event.pull_request.head.sha }}" \
+            --format=markdown \
+            > api-report.md
+
+      - name: Comment API report on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: relimpact-api-report
+          recreate: true
+          path: api-report.md
+
+      - name: Upload HTML API report
         run: |
           relimpact \
             --old="${{ github.event.pull_request.base.sha }}" \
@@ -186,7 +213,7 @@ jobs:
             --format=html \
             > api-report.html
 
-      - name: Upload API report
+      - name: Upload HTML artifact
         uses: actions/upload-artifact@v4
         with:
           name: api-report
