@@ -17,6 +17,14 @@ It answers one release question:
 [![Go Version](https://img.shields.io/github/go-mod/go-version/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/blob/master/go.mod#L3)
 [![Latest Release](https://img.shields.io/github/v/release/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/releases/latest)
 
+---
+
+## Report
+
+![Breaking Changes](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/01-relimpact-breaking-changes.png)
+
+![New Features](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/02-relimpact-new-features.png)
+
 ## Why
 
 Go API changes are easy to miss in a normal diff.
@@ -44,7 +52,7 @@ The report separates:
 - **Breaking changes** - changed or removed API.
 - **New API** - compatible additions.
 
-## Install
+## Installation
 
 Using Go:
 
