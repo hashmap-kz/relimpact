@@ -6,24 +6,26 @@ import (
 	"os"
 	"strings"
 
-	"github.com/hashmap-kz/relimpact/internal/x/fmtx"
-
 	"github.com/hashmap-kz/relimpact/cmd"
 	"github.com/hashmap-kz/relimpact/internal/loggr"
+	"github.com/hashmap-kz/relimpact/internal/x/fmtx"
 )
 
 func main() {
-	oldRef := flag.String("old", "", "Old git ref")
-	newRef := flag.String("new", "", "New git ref")
-	greedy := flag.Bool("greedy", false, "Maximum concurrency")
-	dir := flag.String("dir", ".", "Git directory")
-	format := flag.String("format", "markdown", "Report format: markdown or html")
-	outputFile := flag.String("output", "", "Specify output file")
+	oldRef := flag.String("old", "", "old git ref, tag, branch, or commit")
+	newRef := flag.String("new", "", "new git ref, tag, branch, or commit")
+	dir := flag.String("dir", ".", "path to git repository")
+	format := flag.String("format", "markdown", "report format: markdown or html")
+	outputFile := flag.String("output", "", "write report to file instead of stdout")
+	greedy := flag.Bool("greedy", false, "use maximum concurrency")
+
+	flag.Usage = usage
+
 	flag.Parse()
 
 	if *oldRef == "" || *newRef == "" {
-		fmtx.Fprintf(os.Stderr, "Usage: relimpact --old <ref> --new <ref> [--format markdown|html]\n")
-		os.Exit(1)
+		usage()
+		os.Exit(2)
 	}
 
 	reportFormat := cmd.ReportFormat(strings.ToLower(strings.TrimSpace(*format)))
@@ -31,11 +33,12 @@ func main() {
 	case cmd.ReportFormatMarkdown, cmd.ReportFormatHTML:
 		// ok
 	default:
-		fmtx.Fprintf(os.Stderr, "unsupported format %q: use markdown or html\n", *format)
-		os.Exit(1)
+		fmtx.Fprintf(os.Stderr, "relimpact: unsupported format %q: use markdown or html\n\n", *format)
+		usage()
+		os.Exit(2)
 	}
 
-	// TODO: log level (envs, CLI)
+	// TODO: make log level configurable via env/CLI.
 	loggr.Init(loggr.LevelTrace, "relimpact")
 
 	var report string
@@ -45,13 +48,45 @@ func main() {
 		report = cmd.CreateAPIReportSequential(*dir, *oldRef, *newRef, reportFormat)
 	}
 
-	if *outputFile != "" {
-		err := os.WriteFile(*outputFile, []byte(report), 0o750)
-		if err != nil {
-			fmtx.Fprintf(os.Stderr, "error writing file: %v", err)
-			os.Exit(1)
-		}
-	} else {
+	if *outputFile == "" {
 		fmt.Print(report)
+		return
 	}
+
+	if err := os.WriteFile(*outputFile, []byte(report), 0o644); err != nil {
+		fmtx.Fprintf(os.Stderr, "relimpact: write %s: %v\n", *outputFile, err)
+		os.Exit(1)
+	}
+}
+
+func usage() {
+	fmtx.Fprintf(os.Stderr, `relimpact compares exported Go API between two git refs.
+
+Usage:
+  relimpact --old <ref> --new <ref> [flags]
+
+Required:
+  --old string       old git ref, tag, branch, or commit
+  --new string       new git ref, tag, branch, or commit
+
+Flags:
+  --dir string       path to git repository (default ".")
+  --format string    report format: markdown or html (default "markdown")
+  --output string    write report to file instead of stdout
+  --greedy           use maximum concurrency
+  -h, --help         show help
+
+Examples:
+  relimpact --old v1.0.0 --new HEAD
+
+  relimpact --old v1.0.0 --new HEAD \
+    --format html \
+    --output api-report.html
+
+  relimpact --dir /path/to/repo \
+    --old main \
+    --new feature/api-change \
+    --output api-report.md
+
+`)
 }
