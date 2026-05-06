@@ -31,178 +31,38 @@ type APIType struct {
 	Methods []string `json:"methods"`
 }
 
-type APIDiffRes struct {
-	Label string
-	Path  string
-	X     string
+// APITypeBody holds the full definition of a struct or interface type,
+// carried through the diff pipeline so the HTML report can render it.
+// Nil for all symbol kinds other than whole-type additions and removals.
+type APITypeBody struct {
+	Kind    string   // "struct", "interface", or the underlying kind string
+	Fields  []string // exported fields (structs only)
+	Methods []string // exported methods
 }
+
+// DiffItem represents a single added or removed public symbol in a package.
+type DiffItem struct {
+	Label     string
+	Path      string
+	Signature string       // raw type-checker signature string for this symbol
+	TypeBody  *APITypeBody // non-nil only for whole-type adds/removes
+}
+
+const apiCacheSchemaVersion = "v3"
 
 type APIDiff struct {
-	PackagesAdded   []string     `json:"packages_added,omitempty"`
-	PackagesRemoved []string     `json:"packages_removed,omitempty"`
-	FuncsAdded      []APIDiffRes `json:"funcs_added,omitempty"`
-	FuncsRemoved    []APIDiffRes `json:"funcs_removed,omitempty"`
-	VarsAdded       []APIDiffRes `json:"vars_added,omitempty"`
-	VarsRemoved     []APIDiffRes `json:"vars_removed,omitempty"`
-	ConstsAdded     []APIDiffRes `json:"consts_added,omitempty"`
-	ConstsRemoved   []APIDiffRes `json:"consts_removed,omitempty"`
-	TypesAdded      []APIDiffRes `json:"types_added,omitempty"`
-	TypesRemoved    []APIDiffRes `json:"types_removed,omitempty"`
-	FieldsAdded     []APIDiffRes `json:"fields_added,omitempty"`
-	FieldsRemoved   []APIDiffRes `json:"fields_removed,omitempty"`
-	MethodsAdded    []APIDiffRes `json:"methods_added,omitempty"`
-	MethodsRemoved  []APIDiffRes `json:"methods_removed,omitempty"`
-}
-
-func (d *APIDiff) String() string {
-	var sb strings.Builder
-	sb.WriteString("## API Changes\n")
-
-	type summaryRow struct {
-		Name    string
-		Added   int
-		Removed int
-	}
-
-	summary := []summaryRow{
-		{"Packages", len(d.PackagesAdded), len(d.PackagesRemoved)},
-		{"Funcs", len(d.FuncsAdded), len(d.FuncsRemoved)},
-		{"Vars", len(d.VarsAdded), len(d.VarsRemoved)},
-		{"Consts", len(d.ConstsAdded), len(d.ConstsRemoved)},
-		{"Types", len(d.TypesAdded), len(d.TypesRemoved)},
-		{"Fields", len(d.FieldsAdded), len(d.FieldsRemoved)},
-		{"Methods", len(d.MethodsAdded), len(d.MethodsRemoved)},
-	}
-
-	var totalAdded, totalRemoved int
-	for _, s := range summary {
-		totalAdded += s.Added
-		totalRemoved += s.Removed
-	}
-
-	// TOC
-	sb.WriteString("\n- [Summary](#summary)\n")
-	sb.WriteString("- [Breaking Changes](#breaking-changes)\n")
-	if len(d.PackagesAdded) > 0 {
-		sb.WriteString("- [Packages Added](#packages-added)\n")
-	}
-	if len(d.PackagesRemoved) > 0 {
-		sb.WriteString("- [Packages Removed](#packages-removed)\n")
-	}
-	sb.WriteString("- [Package Changes](#package-changes)\n")
-
-	// Summary table
-	sb.WriteString("\n### Summary\n\n")
-	sb.WriteString("| Kind     | Added | Removed |\n")
-	sb.WriteString("|----------|------:|--------:|\n")
-	for _, s := range summary {
-		xFprintf(&sb, "| %-8s | %5d | %7d |\n", s.Name, s.Added, s.Removed)
-	}
-	xFprintf(&sb, "| %-8s | %5d | %7d |\n", "Total", totalAdded, totalRemoved)
-
-	// Breaking Changes section
-	sb.WriteString("\n### Breaking Changes\n\n")
-	if totalRemoved == 0 {
-		sb.WriteString("_No breaking changes detected._\n")
-	} else {
-		for _, s := range summary {
-			if s.Removed > 0 {
-				xFprintf(&sb, "- %s Removed: **%d**\n", s.Name, s.Removed)
-			}
-		}
-	}
-
-	// Packages added/removed
-	writeSectionSimple := func(prefix string, packages []string) {
-		if len(packages) == 0 {
-			return
-		}
-		xFprintf(&sb, "\n### %s\n\n", prefix)
-		sorted := append([]string{}, packages...)
-		sort.Strings(sorted)
-		for _, pkg := range sorted {
-			xFprintf(&sb, "- `%s`\n", pkg)
-		}
-	}
-
-	writeSectionSimple("Packages Added", d.PackagesAdded)
-	writeSectionSimple("Packages Removed", d.PackagesRemoved)
-
-	type changeKind string
-	const (
-		added   changeKind = "Added"
-		removed changeKind = "Removed"
-	)
-
-	groupByPkgLabel := func(items []APIDiffRes, kind changeKind) map[string]map[string][]string {
-		group := make(map[string]map[string][]string)
-		for _, res := range items {
-			if _, ok := group[res.Path]; !ok {
-				group[res.Path] = make(map[string][]string)
-			}
-			key := fmt.Sprintf("%s %s", kind, res.Label)
-			group[res.Path][key] = append(group[res.Path][key], res.X)
-		}
-		return group
-	}
-
-	grouped := make(map[string]map[string][]string)
-	mergeGroup := func(m map[string]map[string][]string) {
-		for pkg, labels := range m {
-			if _, ok := grouped[pkg]; !ok {
-				grouped[pkg] = make(map[string][]string)
-			}
-			for label, xs := range labels {
-				grouped[pkg][label] = append(grouped[pkg][label], xs...)
-			}
-		}
-	}
-
-	mergeGroup(groupByPkgLabel(d.FuncsAdded, added))
-	mergeGroup(groupByPkgLabel(d.FuncsRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.VarsAdded, added))
-	mergeGroup(groupByPkgLabel(d.VarsRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.ConstsAdded, added))
-	mergeGroup(groupByPkgLabel(d.ConstsRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.TypesAdded, added))
-	mergeGroup(groupByPkgLabel(d.TypesRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.FieldsAdded, added))
-	mergeGroup(groupByPkgLabel(d.FieldsRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.MethodsAdded, added))
-	mergeGroup(groupByPkgLabel(d.MethodsRemoved, removed))
-
-	if len(grouped) > 0 {
-		sb.WriteString("\n### Package Changes\n")
-		pkgs := make([]string, 0, len(grouped))
-		for pkg := range grouped {
-			pkgs = append(pkgs, pkg)
-		}
-		sort.Strings(pkgs)
-
-		for _, pkg := range pkgs {
-			xFprintf(&sb, "\n#### Package `%s`\n\n", pkg)
-			sb.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
-
-			labels := make([]string, 0, len(grouped[pkg]))
-			for label := range grouped[pkg] {
-				labels = append(labels, label)
-			}
-			sort.Strings(labels)
-
-			for _, label := range labels {
-				xFprintf(&sb, "- %s:\n", label)
-				xs := grouped[pkg][label]
-				sort.Strings(xs)
-				for _, x := range xs {
-					xFprintf(&sb, "    - %s\n", x)
-				}
-			}
-
-			sb.WriteString("\n</details>\n")
-		}
-	}
-
-	return sb.String()
+	FuncsAdded     []DiffItem `json:"funcs_added,omitempty"`
+	FuncsRemoved   []DiffItem `json:"funcs_removed,omitempty"`
+	VarsAdded      []DiffItem `json:"vars_added,omitempty"`
+	VarsRemoved    []DiffItem `json:"vars_removed,omitempty"`
+	ConstsAdded    []DiffItem `json:"consts_added,omitempty"`
+	ConstsRemoved  []DiffItem `json:"consts_removed,omitempty"`
+	TypesAdded     []DiffItem `json:"types_added,omitempty"`
+	TypesRemoved   []DiffItem `json:"types_removed,omitempty"`
+	FieldsAdded    []DiffItem `json:"fields_added,omitempty"`
+	FieldsRemoved  []DiffItem `json:"fields_removed,omitempty"`
+	MethodsAdded   []DiffItem `json:"methods_added,omitempty"`
+	MethodsRemoved []DiffItem `json:"methods_removed,omitempty"`
 }
 
 func getCacheDir() string {
@@ -216,7 +76,7 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 	// TODO: debuglog
 
 	sha := getGitCommitSHA(dir)
-	cachePath := filepath.Join(getCacheDir(), sha+".json")
+	cachePath := filepath.Join(getCacheDir(), apiCacheSchemaVersion+"-"+sha+".json")
 	loggr.Debugf("cache path: %s", cachePath)
 
 	// Try to load from cache
@@ -299,7 +159,7 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 				}
 				apkg.Vars = append(apkg.Vars, name+" "+o.Type().String())
 			case *types.Const:
-				apkg.Consts = append(apkg.Consts, name+" "+o.Type().String())
+				apkg.Consts = append(apkg.Consts, name+" "+o.Type().String()+" = "+o.Val().String())
 			case *types.TypeName:
 				t := o.Type().Underlying()
 				atype := APIType{}
@@ -336,6 +196,12 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 			}
 		}
 
+		for name, typ := range apkg.Types {
+			typ.Fields = uniqueSorted(typ.Fields)
+			typ.Methods = uniqueSorted(typ.Methods)
+			apkg.Types[name] = typ
+		}
+
 		api[pkg.PkgPath] = apkg
 	}
 
@@ -350,6 +216,23 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 	}
 
 	return api
+}
+
+func uniqueSorted(xs []string) []string {
+	if len(xs) == 0 {
+		return xs
+	}
+	seen := make(map[string]bool, len(xs))
+	out := xs[:0]
+	for _, x := range xs {
+		if seen[x] {
+			continue
+		}
+		seen[x] = true
+		out = append(out, x)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func signatureString(sig *types.Signature) string {
@@ -375,79 +258,91 @@ func signatureString(sig *types.Signature) string {
 	return b.String()
 }
 
+func emptyAPIPackage() APIPackage {
+	return APIPackage{
+		Funcs:  []string{},
+		Vars:   []string{},
+		Consts: []string{},
+		Types:  map[string]APIType{},
+	}
+}
+
 func DiffAPI(oldAPI, newAPI map[string]APIPackage) *APIDiff {
 	apiDiffResult := &APIDiff{}
 
 	for path, newPkg := range newAPI {
 		oldPkg, ok := oldAPI[path]
-
-		// packages +
 		if !ok {
-			apiDiffResult.PackagesAdded = append(apiDiffResult.PackagesAdded, path)
-			continue
+			oldPkg = emptyAPIPackage()
 		}
-
-		// Funcs
-		funcsAdd, funcsRem := diffList("Funcs", path, oldPkg.Funcs, newPkg.Funcs)
-		apiDiffResult.FuncsAdded = append(apiDiffResult.FuncsAdded, funcsAdd...)
-		apiDiffResult.FuncsRemoved = append(apiDiffResult.FuncsRemoved, funcsRem...)
-
-		// Vars
-		varsAdded, varsRemoved := diffList("Vars", path, oldPkg.Vars, newPkg.Vars)
-		apiDiffResult.VarsAdded = append(apiDiffResult.VarsAdded, varsAdded...)
-		apiDiffResult.VarsRemoved = append(apiDiffResult.VarsRemoved, varsRemoved...)
-
-		// Consts
-		constsAdded, constsRemoved := diffList("Consts", path, oldPkg.Consts, newPkg.Consts)
-		apiDiffResult.ConstsAdded = append(apiDiffResult.ConstsAdded, constsAdded...)
-		apiDiffResult.ConstsRemoved = append(apiDiffResult.ConstsRemoved, constsRemoved...)
-
-		// Types
-		for tname, newType := range newPkg.Types {
-			oldType, ok := oldPkg.Types[tname]
-			if !ok {
-				// types +
-				apiDiffResult.TypesAdded = append(apiDiffResult.TypesAdded, APIDiffRes{
-					Label: "Type",
-					Path:  path,
-					X:     tname,
-				})
-				continue
-			}
-
-			// fields
-			fieldsAdded, fieldsRemoved := diffList(fmt.Sprintf("Type `%s` Fields", tname), path, oldType.Fields, newType.Fields)
-			apiDiffResult.FieldsAdded = append(apiDiffResult.FieldsAdded, fieldsAdded...)
-			apiDiffResult.FieldsRemoved = append(apiDiffResult.FieldsRemoved, fieldsRemoved...)
-
-			// methods
-			methodsAdded, methodsRemoved := diffList(fmt.Sprintf("Type `%s` Methods", tname), path, oldType.Methods, newType.Methods)
-			apiDiffResult.MethodsAdded = append(apiDiffResult.MethodsAdded, methodsAdded...)
-			apiDiffResult.MethodsRemoved = append(apiDiffResult.MethodsRemoved, methodsRemoved...)
-		}
-		// types -
-		for tname := range oldPkg.Types {
-			if _, ok := newPkg.Types[tname]; !ok {
-				apiDiffResult.TypesRemoved = append(apiDiffResult.TypesRemoved, APIDiffRes{
-					Label: "Type",
-					Path:  path,
-					X:     tname,
-				})
-			}
-		}
+		apiDiffResult.addPackageDiff(path, oldPkg, newPkg)
 	}
 
-	// packages -
-	for path := range oldAPI {
-		if _, ok := newAPI[path]; !ok {
-			apiDiffResult.PackagesRemoved = append(apiDiffResult.PackagesRemoved, path)
+	for path, oldPkg := range oldAPI {
+		if _, ok := newAPI[path]; ok {
+			continue
 		}
+		apiDiffResult.addPackageDiff(path, oldPkg, emptyAPIPackage())
 	}
 
 	return apiDiffResult
 }
 
-func diffList(label, path string, oldList, newList []string) (added, removed []APIDiffRes) {
+func (d *APIDiff) addPackageDiff(path string, oldPkg, newPkg APIPackage) {
+	funcsAdded, funcsRemoved := diffList("Funcs", path, oldPkg.Funcs, newPkg.Funcs)
+	d.FuncsAdded = append(d.FuncsAdded, funcsAdded...)
+	d.FuncsRemoved = append(d.FuncsRemoved, funcsRemoved...)
+
+	varsAdded, varsRemoved := diffList("Vars", path, oldPkg.Vars, newPkg.Vars)
+	d.VarsAdded = append(d.VarsAdded, varsAdded...)
+	d.VarsRemoved = append(d.VarsRemoved, varsRemoved...)
+
+	constsAdded, constsRemoved := diffList("Consts", path, oldPkg.Consts, newPkg.Consts)
+	d.ConstsAdded = append(d.ConstsAdded, constsAdded...)
+	d.ConstsRemoved = append(d.ConstsRemoved, constsRemoved...)
+
+	d.addTypeDiffs(path, oldPkg.Types, newPkg.Types)
+}
+
+func (d *APIDiff) addTypeDiffs(path string, oldTypes, newTypes map[string]APIType) {
+	for name, newType := range newTypes {
+		oldType, ok := oldTypes[name]
+		if !ok {
+			d.TypesAdded = append(d.TypesAdded, typeDiffItem("Type", path, name, newType))
+			continue
+		}
+
+		fieldsAdded, fieldsRemoved := diffList(fmt.Sprintf("Type `%s` Fields", name), path, oldType.Fields, newType.Fields)
+		d.FieldsAdded = append(d.FieldsAdded, fieldsAdded...)
+		d.FieldsRemoved = append(d.FieldsRemoved, fieldsRemoved...)
+
+		methodsAdded, methodsRemoved := diffList(fmt.Sprintf("Type `%s` Methods", name), path, oldType.Methods, newType.Methods)
+		d.MethodsAdded = append(d.MethodsAdded, methodsAdded...)
+		d.MethodsRemoved = append(d.MethodsRemoved, methodsRemoved...)
+	}
+
+	for name, oldType := range oldTypes {
+		if _, ok := newTypes[name]; ok {
+			continue
+		}
+		d.TypesRemoved = append(d.TypesRemoved, typeDiffItem("Type", path, name, oldType))
+	}
+}
+
+func typeDiffItem(label, path, name string, typ APIType) DiffItem {
+	return DiffItem{
+		Label:     label,
+		Path:      path,
+		Signature: name,
+		TypeBody: &APITypeBody{
+			Kind:    typ.Kind,
+			Fields:  typ.Fields,
+			Methods: typ.Methods,
+		},
+	}
+}
+
+func diffList(label, path string, oldList, newList []string) (added, removed []DiffItem) {
 	oldSet := make(map[string]bool)
 	for _, x := range oldList {
 		oldSet[x] = true
@@ -459,19 +354,19 @@ func diffList(label, path string, oldList, newList []string) (added, removed []A
 
 	for x := range newSet {
 		if !oldSet[x] {
-			added = append(added, APIDiffRes{
-				Label: label,
-				Path:  path,
-				X:     x,
+			added = append(added, DiffItem{
+				Label:     label,
+				Path:      path,
+				Signature: x,
 			})
 		}
 	}
 	for x := range oldSet {
 		if !newSet[x] {
-			removed = append(removed, APIDiffRes{
-				Label: label,
-				Path:  path,
-				X:     x,
+			removed = append(removed, DiffItem{
+				Label:     label,
+				Path:      path,
+				Signature: x,
 			})
 		}
 	}

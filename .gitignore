@@ -10,7 +10,6 @@ vendor/
 main
 .idea
 
-backups/
 dist/
 bin/
 *.log
@@ -20,3 +19,7 @@ restore_tmp/
 pprof/
 nohup.out
 .cache/
+
+# relimpact specific
+tmp-report.html
+tmp-report.md

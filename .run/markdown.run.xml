@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="markdown" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="relimpact" />
+    <working_directory value="$PROJECT_DIR$" />
+    <parameters value="--old=a9697f4 --new=HEAD --format=markdown --greedy --output=tmp-report.md" />
+    <kind value="FILE" />
+    <package value="github.com/hashmap-kz/relimpact" />
+    <directory value="$PROJECT_DIR$" />
+    <filePath value="$PROJECT_DIR$/main.go" />
+    <method v="2" />
+  </configuration>
+</component>
