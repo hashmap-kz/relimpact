@@ -53,12 +53,13 @@ type overallSummary struct {
 }
 
 type reportData struct {
-	CSS              template.HTML
-	Meta             reportMetaData
-	Verdict          verdictData
-	Summary          overallSummary
-	BreakingPackages []sidebarEntry
-	Packages         []pkgSectionData
+	CSS      template.HTML
+	Meta     reportMetaData
+	Verdict  verdictData
+	Summary  overallSummary
+	Sidebar  sidebarData
+	Breaking []pkgSectionData
+	Added    []pkgSectionData
 }
 
 type reportMetaData struct {
@@ -74,11 +75,16 @@ type verdictData struct {
 	Text  string
 }
 
+type sidebarData struct {
+	Breaking []sidebarEntry
+	Added    []sidebarEntry
+}
+
 type sidebarEntry struct {
 	AnchorID  string
 	Package   string
 	ShortName string
-	Breaking  int
+	Count     int
 }
 
 type pkgSectionData struct {
@@ -152,6 +158,8 @@ func (d *APIDiff) HTML(meta ReportMetadata) string {
 	changes := d.collectSymbolChanges()
 	packages := summarizeByPackage(changes)
 	summary := summarizeOverall(packages)
+	breakingSections := buildPackageSections(changes, "breaking")
+	addedSections := buildPackageSections(changes, "added")
 
 	data := reportData{
 		CSS: template.HTML(reportCSS),
@@ -161,10 +169,11 @@ func (d *APIDiff) HTML(meta ReportMetadata) string {
 			NewRef:      defaultString(meta.NewRef, "new"),
 			GeneratedAt: meta.Now.Format("2006-01-02 15:04:05"),
 		},
-		Verdict:          buildVerdict(summary),
-		Summary:          summary,
-		BreakingPackages: buildSidebarEntries(packages),
-		Packages:         buildPackageSections(changes),
+		Verdict:  buildVerdict(summary),
+		Summary:  summary,
+		Sidebar:  buildSidebar(breakingSections, addedSections),
+		Breaking: breakingSections,
+		Added:    addedSections,
 	}
 
 	var sb strings.Builder
@@ -189,23 +198,59 @@ func buildVerdict(summary overallSummary) verdictData {
 	}
 }
 
-func buildSidebarEntries(packages []PackageChangeSummary) []sidebarEntry {
-	out := make([]sidebarEntry, 0, len(packages))
-	for _, p := range packages {
-		if p.Breaking == 0 {
-			continue
-		}
+func buildSidebar(breaking, added []pkgSectionData) sidebarData {
+	return sidebarData{
+		Breaking: buildSidebarEntries(breaking, "breaking"),
+		Added:    buildSidebarEntries(added, "added"),
+	}
+}
+
+func buildSidebarEntries(sections []pkgSectionData, status string) []sidebarEntry {
+	out := make([]sidebarEntry, 0, len(sections))
+	for _, section := range sections {
 		out = append(out, sidebarEntry{
-			AnchorID:  anchorID(p.Package),
-			Package:   p.Package,
-			ShortName: shortPackage(p.Package),
-			Breaking:  p.Breaking,
+			AnchorID:  section.AnchorID,
+			Package:   section.Package,
+			ShortName: section.ShortName,
+			Count:     countSectionChanges(section, status),
 		})
 	}
 	return out
 }
 
-func buildPackageSections(changes []SymbolChange) []pkgSectionData {
+func countSectionChanges(section pkgSectionData, status string) int {
+	total := 0
+	for _, statusSection := range section.StatusSections {
+		switch status {
+		case "breaking":
+			if statusSection.AccentClass != "added" {
+				total += countStatusSectionChanges(statusSection)
+			}
+		case "added":
+			if statusSection.AccentClass == "added" {
+				total += countStatusSectionChanges(statusSection)
+			}
+		}
+	}
+	return total
+}
+
+func countStatusSectionChanges(section statusSectionData) int {
+	total := len(section.ChangeCards)
+	for _, group := range section.KindGroups {
+		total += group.Count
+	}
+	for _, block := range section.TypeDefBlocks {
+		total += block.Count
+	}
+	for _, diff := range section.StructFieldDiffs {
+		total += diff.Count
+	}
+	return total
+}
+
+func buildPackageSections(changes []SymbolChange, mode string) []pkgSectionData {
+	changes = filterChangesForSection(changes, mode)
 	byPkg := groupChangesByPackage(changes)
 	pkgs := sortedKeys(byPkg)
 
@@ -214,14 +259,52 @@ func buildPackageSections(changes []SymbolChange) []pkgSectionData {
 		pkgChanges := byPkg[pkg]
 		sortChanges(pkgChanges)
 		out = append(out, pkgSectionData{
-			AnchorID:       anchorID(pkg),
+			AnchorID:       sectionAnchorID(mode, pkg),
 			Package:        pkg,
 			ShortName:      shortPackage(pkg),
-			IsBreaking:     hasBreakingChanges(pkgChanges),
+			IsBreaking:     mode == "breaking",
 			StatusSections: buildStatusSections(pkgChanges),
 		})
 	}
+
+	sortPackageSections(out, mode)
 	return out
+}
+
+func filterChangesForSection(changes []SymbolChange, mode string) []SymbolChange {
+	out := make([]SymbolChange, 0, len(changes))
+	for _, ch := range changes {
+		switch mode {
+		case "breaking":
+			if ch.Status == "changed" || ch.Status == "removed" {
+				out = append(out, ch)
+			}
+		case "added":
+			if ch.Status == "added" {
+				out = append(out, ch)
+			}
+		}
+	}
+	return out
+}
+
+func sortPackageSections(sections []pkgSectionData, mode string) {
+	sort.Slice(sections, func(i, j int) bool {
+		left := sectionSortScore(sections[i], mode)
+		right := sectionSortScore(sections[j], mode)
+		if left != right {
+			return left > right
+		}
+		return sections[i].Package < sections[j].Package
+	})
+}
+
+func sectionSortScore(section pkgSectionData, mode string) int {
+	return countSectionChanges(section, mode)
+}
+
+func sectionAnchorID(mode, pkg string) string {
+	return mode + "-" + anchorID(pkg)
 }
 
 func buildStatusSections(changes []SymbolChange) []statusSectionData {
