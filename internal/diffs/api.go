@@ -47,6 +47,8 @@ type DiffItem struct {
 	TypeBody  *APITypeBody // non-nil only for whole-type adds/removes
 }
 
+const apiCacheSchemaVersion = "v2"
+
 type APIDiff struct {
 	PackagesAdded   []string   `json:"packages_added,omitempty"`
 	PackagesRemoved []string   `json:"packages_removed,omitempty"`
@@ -75,7 +77,7 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 	// TODO: debuglog
 
 	sha := getGitCommitSHA(dir)
-	cachePath := filepath.Join(getCacheDir(), sha+".json")
+	cachePath := filepath.Join(getCacheDir(), apiCacheSchemaVersion+"-"+sha+".json")
 	loggr.Debugf("cache path: %s", cachePath)
 
 	// Try to load from cache

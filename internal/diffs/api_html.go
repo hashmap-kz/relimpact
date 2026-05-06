@@ -42,6 +42,12 @@ type StructFieldChange struct {
 	Status string
 }
 
+type apiConstEntry struct {
+	name  string
+	typ   string
+	value string
+}
+
 // PackageChangeSummary aggregates change counts for a single package.
 type PackageChangeSummary struct {
 	Package  string
@@ -463,28 +469,29 @@ func buildScalarTypeGroup(changes []SymbolChange, status string) kindGroupData {
 	}
 }
 
-// buildVarGroup renders package-level variables as a code block.
+// buildVarGroup renders package-level variables as compact rows.
+// Values are not available from go/types for variables, so the report shows the
+// public variable name and its type without pretending there is an initializer.
 func buildVarGroup(changes []SymbolChange, status string) kindGroupData {
-	prefix, spanClass, countClass := diffPrefixClasses(status)
-	var b strings.Builder
+	_, _, countClass := diffPrefixClasses(status)
+	prefix, prefixClass := compactPrefix(status)
+
+	rows := make([]compactRowData, 0, len(changes))
 	for _, ch := range changes {
-		sig := abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
-		parts := strings.Fields(sig)
-		var line string
-		if len(parts) >= 2 {
-			name := parts[0]
-			typ := strings.TrimSpace(strings.TrimPrefix(sig, name))
-			line = "var " + name + " " + typ
-		} else {
-			line = "var " + sig
-		}
-		b.WriteString(`<span class="` + spanClass + `">` + prefix + " " + template.HTMLEscapeString(line) + "\n</span>")
+		name, typ := compactTypedSymbol(ch)
+		rows = append(rows, compactRowData{
+			PrefixClass: prefixClass,
+			Prefix:      prefix,
+			Code:        name,
+			Type:        typ,
+		})
 	}
+
 	return kindGroupData{
 		KindLabel:  pluralKind("Var"),
 		CountClass: countClass,
 		Count:      len(changes),
-		Body:       template.HTML(b.String()),
+		Rows:       rows,
 	}
 }
 
@@ -519,76 +526,36 @@ func parseConstSignature(sig string) (name, typ, value string) {
 	return name, typ, value
 }
 
-// buildConstGroup renders constants as a code block, grouping consts that share
-// the same named type into a single const ( ... ) block — the common iota-enum
-// pattern. Untyped consts are rendered as individual "const Name = value" lines.
+// buildConstGroup renders constants as compact rows.
+// go/types exposes constant values when the snapshot contains them. When a value
+// is available, the report prefers `Name = value`. When older cache entries or
+// older snapshots only contain `Name Type`, the report avoids showing that type
+// as if it were the value; it shows just the name and, when useful, places the
+// shared enum type in the group header.
 func buildConstGroup(changes []SymbolChange, status string) kindGroupData {
-	prefix, spanClass, countClass := diffPrefixClasses(status)
+	_, _, countClass := diffPrefixClasses(status)
+	prefix, prefixClass := compactPrefix(status)
 
-	type constEntry struct{ name, typ, value string }
-	var entries []constEntry
+	rows := make([]compactRowData, 0, len(changes))
 	for _, ch := range changes {
-		name, typ, value := parseConstSignature(firstNonEmpty(ch.New, ch.Old))
-		entries = append(entries, constEntry{name, typ, value})
-	}
+		name, _, value := parseConstSignature(firstNonEmpty(ch.New, ch.Old))
+		code := name
+		if value != "" {
+			code += " = " + value
+		}
 
-	// Only group by named types (typ != ""), and only when more than one const
-	// shares that type.
-	typCount := make(map[string]int)
-	for _, e := range entries {
-		if e.typ != "" {
-			typCount[e.typ]++
-		}
-	}
-
-	var b strings.Builder
-	rendered := make(map[string]bool)
-
-	// Gather grouped types in order of first appearance.
-	var groupedTypes []string
-	seenType := make(map[string]bool)
-	for _, e := range entries {
-		if e.typ != "" && typCount[e.typ] > 1 && !seenType[e.typ] {
-			groupedTypes = append(groupedTypes, e.typ)
-			seenType[e.typ] = true
-		}
-	}
-	for _, typ := range groupedTypes {
-		b.WriteString(`<span class="diff-context">const (` + "\n</span>")
-		for _, e := range entries {
-			if e.typ != typ {
-				continue
-			}
-			rendered[e.name] = true
-			line := "    " + e.name + " " + typ
-			if e.value != "" {
-				line += " = " + e.value
-			}
-			b.WriteString(`<span class="` + spanClass + `">` + prefix + " " + template.HTMLEscapeString(line) + "\n</span>")
-		}
-		b.WriteString(`<span class="diff-context">)` + "\n</span>")
-	}
-
-	// Remaining entries: named-type singletons and all untyped consts.
-	for _, e := range entries {
-		if rendered[e.name] {
-			continue
-		}
-		line := "const " + e.name
-		if e.typ != "" {
-			line += " " + e.typ
-		}
-		if e.value != "" {
-			line += " = " + e.value
-		}
-		b.WriteString(`<span class="` + spanClass + `">` + prefix + " " + template.HTMLEscapeString(line) + "\n</span>")
+		rows = append(rows, compactRowData{
+			PrefixClass: prefixClass,
+			Prefix:      prefix,
+			Code:        code,
+		})
 	}
 
 	return kindGroupData{
 		KindLabel:  pluralKind("Const"),
 		CountClass: countClass,
 		Count:      len(changes),
-		Body:       template.HTML(b.String()),
+		Rows:       rows,
 	}
 }
 
@@ -599,6 +566,13 @@ func diffPrefixClasses(status string) (prefix, spanClass, countClass string) {
 		return "−", "diff-removed", "rem"
 	}
 	return "+", "diff-added", "add"
+}
+
+func compactPrefix(status string) (prefix, prefixClass string) {
+	if status == "removed" {
+		return "−", "rem"
+	}
+	return "+", "add"
 }
 
 // compactRowParts returns the code string and optional type annotation for a
