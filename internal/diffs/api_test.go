@@ -150,3 +150,22 @@ func TestAPIDiff_String(t *testing.T) {
 	readFile := testutils.ReadTestData(t, t.Name()+".md")
 	require.Equal(t, out, string(readFile))
 }
+
+func TestAPIDiff_HTML(t *testing.T) {
+	d := &APIDiff{
+		FuncsAdded: []APIDiffRes{
+			{Path: "pkg/foo", Label: "Funcs", X: "NewFoo() -> error"},
+		},
+		FuncsRemoved: []APIDiffRes{
+			{Path: "pkg/foo", Label: "Funcs", X: "OldFoo() -> error"},
+		},
+	}
+
+	out := d.HTML(APIReportMeta{Repo: "repo", OldRef: "v1", NewRef: "HEAD"})
+
+	assert.Contains(t, out, "API Compatibility Report")
+	assert.Contains(t, out, "Breaking API changes detected")
+	assert.Contains(t, out, "OldFoo")
+	assert.Contains(t, out, "NewFoo")
+	assert.Contains(t, out, "pkg/foo")
+}

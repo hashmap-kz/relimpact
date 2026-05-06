@@ -2,29 +2,34 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 	"sync"
-
-	"github.com/hashmap-kz/relimpact/internal/loggr"
+	"time"
 
 	"github.com/hashmap-kz/relimpact/internal/diffs"
 	"github.com/hashmap-kz/relimpact/internal/gitutils"
+	"github.com/hashmap-kz/relimpact/internal/loggr"
 )
 
-// TODO: configurable
-var includeExts = []string{".sh", ".sql", ".json", ".yaml", ".yml", ".conf", ".ini", ".txt", ".csv"}
+type ReportFormat string
+
+const (
+	ReportFormatMarkdown ReportFormat = "markdown"
+	ReportFormatHTML     ReportFormat = "html"
+)
 
 func CreateChangelog(repoDir, oldRef, newRef string) string {
-	//  1. Concurrent checkout old/new worktrees
+	return CreateAPIReport(repoDir, oldRef, newRef, ReportFormatMarkdown)
+}
+
+func CreateAPIReport(repoDir, oldRef, newRef string, format ReportFormat) string {
 	tmpOld, tmpNew := checkout(repoDir, oldRef, newRef)
 	defer gitutils.CleanupWorktree(repoDir, tmpOld)
 	defer gitutils.CleanupWorktree(repoDir, tmpNew)
 
-	//  2. Concurrent SnapshotAPI old/new
 	oldAPI, newAPI := snap(tmpOld, tmpNew)
 
-	//  3. Concurrent make diffs
-	return runDiffs(repoDir, oldRef, newRef, oldAPI, newAPI, tmpOld, tmpNew)
+	apiDiff := diffs.DiffAPI(oldAPI, newAPI)
+	return renderAPIReport(apiDiff, repoDir, oldRef, newRef, format)
 }
 
 //nolint:gocritic
@@ -101,62 +106,14 @@ func snap(tmpOld, tmpNew string) (map[string]diffs.APIPackage, map[string]diffs.
 	return oldAPI, newAPI
 }
 
-func runDiffs(
-	repoDir, oldRef, newRef string,
-	oldAPI, newAPI map[string]diffs.APIPackage,
-	tmpOld, tmpNew string,
-) string {
-	var wgDiffs sync.WaitGroup
-	apiDiffCh := make(chan string, 1)
-	docsDiffCh := make(chan string, 1)
-	modsDiffCh := make(chan string, 1)
-	otherDiffCh := make(chan string, 1)
-
-	// API diff
-	wgDiffs.Add(1)
-	go func() {
-		defer wgDiffs.Done()
-		apiDiffResult := diffs.DiffAPI(oldAPI, newAPI)
-		apiDiffCh <- apiDiffResult.String() + "\n"
-	}()
-
-	// Docs diff
-	wgDiffs.Add(1)
-	go func() {
-		defer wgDiffs.Done()
-		docsDiffs := diffs.DiffDocs(tmpOld, tmpNew)
-		docsDiffCh <- diffs.FormatAllDocDiffs(docsDiffs) + "\n"
-	}()
-
-	// go.mod diff
-	wgDiffs.Add(1)
-	go func() {
-		defer wgDiffs.Done()
-		modDiffs := diffs.DiffGoMod(tmpOld, tmpNew)
-		modsDiffCh <- modDiffs.String() + "\n"
-	}()
-
-	// Other files diff
-	wgDiffs.Add(1)
-	go func() {
-		defer wgDiffs.Done()
-		otherSection := diffs.DiffOther(repoDir, oldRef, newRef, includeExts)
-		otherDiffCh <- otherSection.String() + "\n"
-	}()
-
-	// Wait for all diffs to complete
-	wgDiffs.Wait()
-	close(apiDiffCh)
-	close(docsDiffCh)
-	close(modsDiffCh)
-	close(otherDiffCh)
-
-	//  Collect results
-	var sb strings.Builder
-	sb.WriteString(<-apiDiffCh)
-	sb.WriteString(<-docsDiffCh)
-	sb.WriteString(<-modsDiffCh)
-	sb.WriteString(<-otherDiffCh)
-
-	return sb.String()
+func renderAPIReport(apiDiff *diffs.APIDiff, repoDir, oldRef, newRef string, format ReportFormat) string {
+	if format == ReportFormatHTML {
+		return apiDiff.HTML(diffs.APIReportMeta{
+			Repo:   repoDir,
+			OldRef: oldRef,
+			NewRef: newRef,
+			Now:    time.Now(),
+		})
+	}
+	return apiDiff.String() + "\n"
 }
