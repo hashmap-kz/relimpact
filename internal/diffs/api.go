@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -31,16 +30,26 @@ type APIType struct {
 	Methods []string `json:"methods"`
 }
 
+// APITypeBody holds the full definition of a struct or interface type,
+// carried through the diff pipeline so the HTML report can render it.
+// Nil for all symbol kinds other than whole-type additions and removals.
+type APITypeBody struct {
+	Kind    string   // "struct", "interface", or the underlying kind string
+	Fields  []string // exported fields (structs only)
+	Methods []string // exported methods
+}
+
 // DiffItem represents a single added or removed public symbol in a package.
 type DiffItem struct {
 	Label     string
 	Path      string
-	Signature string // raw type-checker signature string for this symbol
+	Signature string       // raw type-checker signature string for this symbol
+	TypeBody  *APITypeBody // non-nil only for whole-type adds/removes
 }
 
 type APIDiff struct {
-	PackagesAdded   []string     `json:"packages_added,omitempty"`
-	PackagesRemoved []string     `json:"packages_removed,omitempty"`
+	PackagesAdded   []string   `json:"packages_added,omitempty"`
+	PackagesRemoved []string   `json:"packages_removed,omitempty"`
 	FuncsAdded      []DiffItem `json:"funcs_added,omitempty"`
 	FuncsRemoved    []DiffItem `json:"funcs_removed,omitempty"`
 	VarsAdded       []DiffItem `json:"vars_added,omitempty"`
@@ -53,157 +62,6 @@ type APIDiff struct {
 	FieldsRemoved   []DiffItem `json:"fields_removed,omitempty"`
 	MethodsAdded    []DiffItem `json:"methods_added,omitempty"`
 	MethodsRemoved  []DiffItem `json:"methods_removed,omitempty"`
-}
-
-func (d *APIDiff) String() string {
-	var sb strings.Builder
-	sb.WriteString("## API Changes\n")
-
-	type summaryRow struct {
-		Name    string
-		Added   int
-		Removed int
-	}
-
-	summary := []summaryRow{
-		{"Packages", len(d.PackagesAdded), len(d.PackagesRemoved)},
-		{"Funcs", len(d.FuncsAdded), len(d.FuncsRemoved)},
-		{"Vars", len(d.VarsAdded), len(d.VarsRemoved)},
-		{"Consts", len(d.ConstsAdded), len(d.ConstsRemoved)},
-		{"Types", len(d.TypesAdded), len(d.TypesRemoved)},
-		{"Fields", len(d.FieldsAdded), len(d.FieldsRemoved)},
-		{"Methods", len(d.MethodsAdded), len(d.MethodsRemoved)},
-	}
-
-	var totalAdded, totalRemoved int
-	for _, s := range summary {
-		totalAdded += s.Added
-		totalRemoved += s.Removed
-	}
-
-	// TOC
-	sb.WriteString("\n- [Summary](#summary)\n")
-	sb.WriteString("- [Breaking Changes](#breaking-changes)\n")
-	if len(d.PackagesAdded) > 0 {
-		sb.WriteString("- [Packages Added](#packages-added)\n")
-	}
-	if len(d.PackagesRemoved) > 0 {
-		sb.WriteString("- [Packages Removed](#packages-removed)\n")
-	}
-	sb.WriteString("- [Package Changes](#package-changes)\n")
-
-	// Summary table
-	sb.WriteString("\n### Summary\n\n")
-	sb.WriteString("| Kind     | Added | Removed |\n")
-	sb.WriteString("|----------|------:|--------:|\n")
-	for _, s := range summary {
-		hfprintf(&sb, "| %-8s | %5d | %7d |\n", s.Name, s.Added, s.Removed)
-	}
-	hfprintf(&sb, "| %-8s | %5d | %7d |\n", "Total", totalAdded, totalRemoved)
-
-	// Breaking Changes section
-	sb.WriteString("\n### Breaking Changes\n\n")
-	if totalRemoved == 0 {
-		sb.WriteString("_No breaking changes detected._\n")
-	} else {
-		for _, s := range summary {
-			if s.Removed > 0 {
-				hfprintf(&sb, "- %s Removed: **%d**\n", s.Name, s.Removed)
-			}
-		}
-	}
-
-	// Packages added/removed
-	writeSectionSimple := func(prefix string, packages []string) {
-		if len(packages) == 0 {
-			return
-		}
-		hfprintf(&sb, "\n### %s\n\n", prefix)
-		sorted := append([]string{}, packages...)
-		sort.Strings(sorted)
-		for _, pkg := range sorted {
-			hfprintf(&sb, "- `%s`\n", pkg)
-		}
-	}
-
-	writeSectionSimple("Packages Added", d.PackagesAdded)
-	writeSectionSimple("Packages Removed", d.PackagesRemoved)
-
-	type changeKind string
-	const (
-		added   changeKind = "Added"
-		removed changeKind = "Removed"
-	)
-
-	groupByPkgLabel := func(items []DiffItem, kind changeKind) map[string]map[string][]string {
-		group := make(map[string]map[string][]string)
-		for _, res := range items {
-			if _, ok := group[res.Path]; !ok {
-				group[res.Path] = make(map[string][]string)
-			}
-			key := fmt.Sprintf("%s %s", kind, res.Label)
-			group[res.Path][key] = append(group[res.Path][key], res.Signature)
-		}
-		return group
-	}
-
-	grouped := make(map[string]map[string][]string)
-	mergeGroup := func(m map[string]map[string][]string) {
-		for pkg, labels := range m {
-			if _, ok := grouped[pkg]; !ok {
-				grouped[pkg] = make(map[string][]string)
-			}
-			for label, xs := range labels {
-				grouped[pkg][label] = append(grouped[pkg][label], xs...)
-			}
-		}
-	}
-
-	mergeGroup(groupByPkgLabel(d.FuncsAdded, added))
-	mergeGroup(groupByPkgLabel(d.FuncsRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.VarsAdded, added))
-	mergeGroup(groupByPkgLabel(d.VarsRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.ConstsAdded, added))
-	mergeGroup(groupByPkgLabel(d.ConstsRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.TypesAdded, added))
-	mergeGroup(groupByPkgLabel(d.TypesRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.FieldsAdded, added))
-	mergeGroup(groupByPkgLabel(d.FieldsRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.MethodsAdded, added))
-	mergeGroup(groupByPkgLabel(d.MethodsRemoved, removed))
-
-	if len(grouped) > 0 {
-		sb.WriteString("\n### Package Changes\n")
-		pkgs := make([]string, 0, len(grouped))
-		for pkg := range grouped {
-			pkgs = append(pkgs, pkg)
-		}
-		sort.Strings(pkgs)
-
-		for _, pkg := range pkgs {
-			hfprintf(&sb, "\n#### Package `%s`\n\n", pkg)
-			sb.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
-
-			labels := make([]string, 0, len(grouped[pkg]))
-			for label := range grouped[pkg] {
-				labels = append(labels, label)
-			}
-			sort.Strings(labels)
-
-			for _, label := range labels {
-				hfprintf(&sb, "- %s:\n", label)
-				xs := grouped[pkg][label]
-				sort.Strings(xs)
-				for _, x := range xs {
-					hfprintf(&sb, "    - %s\n", x)
-				}
-			}
-
-			sb.WriteString("\n</details>\n")
-		}
-	}
-
-	return sb.String()
 }
 
 func getCacheDir() string {
@@ -407,11 +265,16 @@ func DiffAPI(oldAPI, newAPI map[string]APIPackage) *APIDiff {
 		for tname, newType := range newPkg.Types {
 			oldType, ok := oldPkg.Types[tname]
 			if !ok {
-				// types +
+				// whole type added — carry the full definition so the report can render it
 				apiDiffResult.TypesAdded = append(apiDiffResult.TypesAdded, DiffItem{
 					Label:     "Type",
 					Path:      path,
 					Signature: tname,
+					TypeBody: &APITypeBody{
+						Kind:    newType.Kind,
+						Fields:  newType.Fields,
+						Methods: newType.Methods,
+					},
 				})
 				continue
 			}
@@ -427,12 +290,18 @@ func DiffAPI(oldAPI, newAPI map[string]APIPackage) *APIDiff {
 			apiDiffResult.MethodsRemoved = append(apiDiffResult.MethodsRemoved, methodsRemoved...)
 		}
 		// types -
-		for tname := range oldPkg.Types {
+		for tname, oldType := range oldPkg.Types {
 			if _, ok := newPkg.Types[tname]; !ok {
+				// whole type removed — carry the full definition for the report
 				apiDiffResult.TypesRemoved = append(apiDiffResult.TypesRemoved, DiffItem{
 					Label:     "Type",
 					Path:      path,
 					Signature: tname,
+					TypeBody: &APITypeBody{
+						Kind:    oldType.Kind,
+						Fields:  oldType.Fields,
+						Methods: oldType.Methods,
+					},
 				})
 			}
 		}

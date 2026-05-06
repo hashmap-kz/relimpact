@@ -1,14 +1,16 @@
 package diffs
 
 import (
-	"fmt"
-	"html"
-	"io"
+	"html/template"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 )
+
+// -----------------------------------------------------------------------
+// Public types
+// -----------------------------------------------------------------------
 
 // ReportMetadata holds context for rendering the HTML report header.
 type ReportMetadata struct {
@@ -21,13 +23,14 @@ type ReportMetadata struct {
 // SymbolChange is a processed, display-ready record of a single public symbol
 // that was added, removed, or had its signature changed between two refs.
 type SymbolChange struct {
-	Package string
-	Kind    string
-	Scope   string
-	Name    string
-	Old     string
-	New     string
-	Status  string
+	Package  string
+	Kind     string
+	Scope    string
+	Name     string
+	Old      string
+	New      string
+	Status   string
+	TypeBody *APITypeBody // non-nil for whole-type adds/removes with struct or interface bodies
 }
 
 // StructFieldChange holds a parsed field belonging to a specific struct owner,
@@ -60,6 +63,108 @@ type overallSummary struct {
 	Total           int
 }
 
+// -----------------------------------------------------------------------
+// Template data types
+// -----------------------------------------------------------------------
+
+type reportData struct {
+	CSS              template.HTML
+	Meta             reportMetaData
+	Verdict          verdictData
+	Summary          overallSummary
+	BreakingPackages []sidebarEntry
+	Packages         []pkgSectionData
+}
+
+type reportMetaData struct {
+	Repo        string
+	OldRef      string
+	NewRef      string
+	GeneratedAt string
+}
+
+type verdictData struct {
+	Class string
+	Icon  string
+	Text  string
+}
+
+type sidebarEntry struct {
+	AnchorID  string
+	Package   string
+	ShortName string
+	Breaking  int
+}
+
+type pkgSectionData struct {
+	AnchorID       string
+	Package        string
+	ShortName      string
+	IsBreaking     bool
+	StatusSections []statusSectionData
+}
+
+type statusSectionData struct {
+	Title            string
+	AccentClass      string
+	ChangeCards      []changeCardData
+	KindGroups       []kindGroupData
+	TypeDefBlocks    []typeDefBlockData
+	StructFieldDiffs []structFieldDiffData
+}
+
+type changeCardData struct {
+	KindLabel   string
+	Name        string
+	UnifiedDiff template.HTML
+}
+
+type kindGroupData struct {
+	KindLabel  string
+	CountClass string
+	Count      int
+	Rows       []compactRowData
+}
+
+type compactRowData struct {
+	PrefixClass string
+	Prefix      string
+	Code        string
+	Type        string
+}
+
+type structFieldDiffData struct {
+	Title      string
+	CountClass string
+	Count      int
+	Body       template.HTML
+}
+
+type typeDefBlockData struct {
+	KindLabel  string
+	CountClass string
+	Count      int
+	Body       template.HTML
+}
+
+// -----------------------------------------------------------------------
+// Entry point
+// -----------------------------------------------------------------------
+
+var reportTmpl = template.Must(
+	template.New("report").
+		Funcs(template.FuncMap{
+			"not": func(v interface{}) bool {
+				switch x := v.(type) {
+				case []pkgSectionData:
+					return len(x) == 0
+				}
+				return false
+			},
+		}).
+		Parse(reportTemplates),
+)
+
 func (d *APIDiff) HTML(meta ReportMetadata) string {
 	if meta.Now.IsZero() {
 		meta.Now = time.Now()
@@ -68,56 +173,459 @@ func (d *APIDiff) HTML(meta ReportMetadata) string {
 	changes := d.collectSymbolChanges()
 	pkgSummaries := summarizeByPackage(changes)
 	summary := summarizeOverall(changes, len(pkgSummaries))
-	verdictClass := "verdict-ok"
-	verdictTitle := "Compatible API changes only"
-	verdictText := "No breaking API changes were detected."
+
+	verdict := verdictData{
+		Class: "verdict-ok",
+		Icon:  "circle-check",
+		Text:  "Compatible API changes only — no breaking changes detected.",
+	}
 	if summary.Breaking > 0 {
-		verdictClass = "verdict-breaking"
-		verdictTitle = "Breaking API changes detected"
-		verdictText = "Review changed and removed public symbols before release."
+		verdict = verdictData{
+			Class: "verdict-breaking",
+			Icon:  "alert-triangle",
+			Text:  "Breaking API changes detected — review before release.",
+		}
+	}
+
+	data := reportData{
+		CSS: template.HTML(reportCSS),
+		Meta: reportMetaData{
+			Repo:        defaultString(meta.Repo, "repository"),
+			OldRef:      defaultString(meta.OldRef, "old"),
+			NewRef:      defaultString(meta.NewRef, "new"),
+			GeneratedAt: meta.Now.Format("2006-01-02 15:04:05"),
+		},
+		Verdict:          verdict,
+		Summary:          summary,
+		BreakingPackages: buildSidebarEntries(pkgSummaries),
+		Packages:         buildPackageSections(changes),
 	}
 
 	var sb strings.Builder
-	sb.WriteString("<!doctype html>\n<html lang=\"en\">\n<head>\n")
-	sb.WriteString("<meta charset=\"utf-8\">\n")
-	sb.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
-	sb.WriteString("<title>API Compatibility Report</title>\n")
-	sb.WriteString(apiReportCSS())
-	sb.WriteString("</head>\n<body>\n")
-	sb.WriteString("<div class=\"layout\">\n")
-	renderSidebar(&sb, pkgSummaries)
-	sb.WriteString("<main>\n")
-
-	hfprintf(&sb, "<header class=\"hero\">\n")
-	hfprintf(&sb, "<div class=\"eyebrow\">relimpact api</div>\n")
-	hfprintf(&sb, "<h1>API Compatibility Report</h1>\n")
-	hfprintf(&sb, "<p class=\"sub\">%s · %s → %s · generated %s</p>\n",
-		esc(defaultString(meta.Repo, "repository")),
-		esc(defaultString(meta.OldRef, "old")),
-		esc(defaultString(meta.NewRef, "new")),
-		esc(meta.Now.Format("2006-01-02 15:04:05")),
-	)
-	hfprintf(&sb, "</header>\n")
-
-	hfprintf(&sb, "<section class=\"verdict %s\">\n", verdictClass)
-	hfprintf(&sb, "<div class=\"verdict-title\">%s</div>\n", esc(verdictTitle))
-	hfprintf(&sb, "<div class=\"verdict-text\">%s</div>\n", esc(verdictText))
-	sb.WriteString("</section>\n")
-
-	renderSummaryCards(&sb, summary)
-
-	if summary.Breaking > 0 {
-		renderBreakingChangeSummary(&sb, changes)
+	if err := reportTmpl.ExecuteTemplate(&sb, "report", data); err != nil {
+		return "<!-- template error: " + err.Error() + " -->"
 	}
-
-	renderAllPackageChanges(&sb, changes)
-
-	sb.WriteString("</main>\n</div>\n</body>\n</html>\n")
 	return sb.String()
 }
 
-// collectSymbolChanges builds the full flat list of SymbolChanges from the raw
-// APIDiff, merging paired add+remove entries into "changed" records.
+// -----------------------------------------------------------------------
+// Sidebar
+// -----------------------------------------------------------------------
+
+func buildSidebarEntries(pkgs []PackageChangeSummary) []sidebarEntry {
+	var out []sidebarEntry
+	for _, p := range pkgs {
+		if p.Breaking > 0 {
+			out = append(out, sidebarEntry{
+				AnchorID:  anchorID(p.Package),
+				Package:   p.Package,
+				ShortName: shortPackage(p.Package),
+				Breaking:  p.Breaking,
+			})
+		}
+	}
+	return out
+}
+
+// -----------------------------------------------------------------------
+// Package sections
+// -----------------------------------------------------------------------
+
+func buildPackageSections(changes []SymbolChange) []pkgSectionData {
+	byPkg := make(map[string][]SymbolChange)
+	for _, ch := range changes {
+		byPkg[ch.Package] = append(byPkg[ch.Package], ch)
+	}
+	pkgs := make([]string, 0, len(byPkg))
+	for pkg := range byPkg {
+		pkgs = append(pkgs, pkg)
+	}
+	sort.Strings(pkgs)
+
+	var out []pkgSectionData
+	for _, pkg := range pkgs {
+		pkgChanges := byPkg[pkg]
+		sort.Slice(pkgChanges, func(i, j int) bool {
+			if statusRank(pkgChanges[i].Status) != statusRank(pkgChanges[j].Status) {
+				return statusRank(pkgChanges[i].Status) < statusRank(pkgChanges[j].Status)
+			}
+			if kindRank(pkgChanges[i].Kind) != kindRank(pkgChanges[j].Kind) {
+				return kindRank(pkgChanges[i].Kind) < kindRank(pkgChanges[j].Kind)
+			}
+			return pkgChanges[i].Name < pkgChanges[j].Name
+		})
+
+		isBreaking := false
+		for _, ch := range pkgChanges {
+			if ch.Status == "changed" || ch.Status == "removed" {
+				isBreaking = true
+				break
+			}
+		}
+
+		out = append(out, pkgSectionData{
+			AnchorID:       anchorID(pkg),
+			Package:        pkg,
+			ShortName:      shortPackage(pkg),
+			IsBreaking:     isBreaking,
+			StatusSections: buildStatusSections(pkgChanges),
+		})
+	}
+	return out
+}
+
+func buildStatusSections(changes []SymbolChange) []statusSectionData {
+	var sections []statusSectionData
+	specs := []struct {
+		status      string
+		title       string
+		accentClass string
+	}{
+		{"changed", "Changed signatures", "changed"},
+		{"removed", "Removed API", "removed"},
+		{"added", "Added API", "added"},
+	}
+	for _, spec := range specs {
+		var group []SymbolChange
+		for _, ch := range changes {
+			if ch.Status == spec.status {
+				group = append(group, ch)
+			}
+		}
+		if len(group) == 0 {
+			continue
+		}
+		sections = append(sections, buildStatusSection(spec.title, spec.accentClass, spec.status, group))
+	}
+	return sections
+}
+
+func buildStatusSection(title, accentClass, status string, changes []SymbolChange) statusSectionData {
+	s := statusSectionData{
+		Title:       title,
+		AccentClass: accentClass,
+	}
+
+	if status == "changed" {
+		for _, ch := range changes {
+			s.ChangeCards = append(s.ChangeCards, buildChangeCard(ch))
+		}
+		return s
+	}
+
+	// Group by kind in canonical order.
+	byKind := make(map[string][]SymbolChange)
+	for _, ch := range changes {
+		byKind[ch.Kind] = append(byKind[ch.Kind], ch)
+	}
+
+	for _, kind := range apiKindOrder() {
+		xs := byKind[kind]
+		if len(xs) == 0 {
+			continue
+		}
+		sort.Slice(xs, func(i, j int) bool { return xs[i].Name < xs[j].Name })
+
+		switch kind {
+		case "Field":
+			s.StructFieldDiffs = append(s.StructFieldDiffs, buildStructFieldDiffs(xs, status)...)
+		case "Type":
+			var withBody, withoutBody []SymbolChange
+			for _, ch := range xs {
+				if ch.TypeBody != nil && (ch.TypeBody.Kind == "struct" || ch.TypeBody.Kind == "interface") {
+					withBody = append(withBody, ch)
+				} else {
+					withoutBody = append(withoutBody, ch)
+				}
+			}
+			for _, ch := range withBody {
+				s.TypeDefBlocks = append(s.TypeDefBlocks, buildTypeDefBlock(ch, status))
+			}
+			if len(withoutBody) > 0 {
+				s.KindGroups = append(s.KindGroups, buildKindGroup(kind, withoutBody, status))
+			}
+		default:
+			s.KindGroups = append(s.KindGroups, buildKindGroup(kind, xs, status))
+		}
+	}
+	return s
+}
+
+// -----------------------------------------------------------------------
+// Change cards (changed signatures)
+// -----------------------------------------------------------------------
+
+func buildChangeCard(ch SymbolChange) changeCardData {
+	oldFmt := formatAPIValue(ch.Kind, ch.Scope, ch.Old)
+	newFmt := formatAPIValue(ch.Kind, ch.Scope, ch.New)
+	return changeCardData{
+		KindLabel:   ch.Kind + " signature",
+		Name:        ch.Name,
+		UnifiedDiff: buildUnifiedDiff(oldFmt, newFmt),
+	}
+}
+
+// buildUnifiedDiff returns safe HTML for a unified diff block.
+// Removed lines are red, added lines are green, shared context is muted.
+func buildUnifiedDiff(oldSig, newSig string) template.HTML {
+	oldLines := strings.Split(oldSig, "\n")
+	newLines := strings.Split(newSig, "\n")
+
+	oldSet := make(map[string]bool, len(oldLines))
+	newSet := make(map[string]bool, len(newLines))
+	for _, l := range oldLines {
+		oldSet[l] = true
+	}
+	for _, l := range newLines {
+		newSet[l] = true
+	}
+
+	var b strings.Builder
+	for _, line := range oldLines {
+		if !newSet[line] {
+			b.WriteString(`<span class="diff-removed">− `)
+			b.WriteString(template.HTMLEscapeString(line))
+			b.WriteString("\n</span>")
+		}
+	}
+	for _, line := range oldLines {
+		if newSet[line] {
+			b.WriteString(`<span class="diff-context">  `)
+			b.WriteString(template.HTMLEscapeString(line))
+			b.WriteString("\n</span>")
+		}
+	}
+	for _, line := range newLines {
+		if !oldSet[line] {
+			b.WriteString(`<span class="diff-added">+ `)
+			b.WriteString(template.HTMLEscapeString(line))
+			b.WriteString("\n</span>")
+		}
+	}
+	return template.HTML(b.String())
+}
+
+// -----------------------------------------------------------------------
+// Compact kind groups
+// -----------------------------------------------------------------------
+
+func buildKindGroup(kind string, changes []SymbolChange, status string) kindGroupData {
+	countClass := "add"
+	prefix := "+"
+	prefixClass := "add"
+	if status == "removed" {
+		countClass = "rem"
+		prefix = "−"
+		prefixClass = "rem"
+	}
+
+	rows := make([]compactRowData, 0, len(changes))
+	for _, ch := range changes {
+		code, typ := compactRowParts(ch)
+		rows = append(rows, compactRowData{
+			PrefixClass: prefixClass,
+			Prefix:      prefix,
+			Code:        code,
+			Type:        typ,
+		})
+	}
+
+	return kindGroupData{
+		KindLabel:  pluralKind(kind),
+		CountClass: countClass,
+		Count:      len(changes),
+		Rows:       rows,
+	}
+}
+
+// compactRowParts returns the code string and optional type annotation for a
+// compact list row, depending on the symbol kind.
+func compactRowParts(ch SymbolChange) (code, typ string) {
+	switch ch.Kind {
+	case "Func":
+		return compactFunc(ch), ""
+	case "Method":
+		return compactMethod(ch), ""
+	case "Var", "Const":
+		return compactTypedSymbol(ch)
+	default:
+		return formatCompactSymbol(ch, ""), ""
+	}
+}
+
+// -----------------------------------------------------------------------
+// Struct field diffs
+// -----------------------------------------------------------------------
+
+func buildStructFieldDiffs(changes []SymbolChange, status string) []structFieldDiffData {
+	grouped := groupFieldsByOwner(changes, status)
+	if len(grouped) == 0 {
+		// Fallback: no owner info, render as a plain kind group.
+		kg := buildKindGroup("Field", changes, status)
+		return []structFieldDiffData{{
+			Title:      kg.KindLabel,
+			CountClass: kg.CountClass,
+			Count:      kg.Count,
+			Body:       buildFallbackFieldBody(changes, status),
+		}}
+	}
+
+	owners := make([]string, 0, len(grouped))
+	for owner := range grouped {
+		owners = append(owners, owner)
+	}
+	sort.Strings(owners)
+
+	countClass := "add"
+	if status == "removed" {
+		countClass = "rem"
+	}
+
+	var out []structFieldDiffData
+	for _, owner := range owners {
+		fields := grouped[owner]
+		out = append(out, structFieldDiffData{
+			Title:      "type " + owner + " struct",
+			CountClass: countClass,
+			Count:      len(fields),
+			Body:       buildStructFieldDiffBody(fields, status),
+		})
+	}
+	return out
+}
+
+func buildStructFieldDiffBody(fields []StructFieldChange, status string) template.HTML {
+	prefix := "+"
+	spanClass := "diff-added"
+	if status == "removed" {
+		prefix = "-"
+		spanClass = "diff-removed"
+	}
+
+	width := 0
+	for _, f := range fields {
+		if len(f.Name) > width {
+			width = len(f.Name)
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString(`<span class="diff-context">  {` + "\n</span>")
+	for _, f := range fields {
+		pad := width - len(f.Name) + 1
+		if pad < 1 {
+			pad = 1
+		}
+		b.WriteString(`<span class="` + spanClass + `">`)
+		b.WriteString(prefix + "   ")
+		b.WriteString(template.HTMLEscapeString(f.Name))
+		b.WriteString(strings.Repeat(" ", pad))
+		b.WriteString(template.HTMLEscapeString(f.Type))
+		b.WriteString("\n</span>")
+	}
+	b.WriteString(`<span class="diff-context">  }` + "</span>")
+	return template.HTML(b.String())
+}
+
+func buildFallbackFieldBody(changes []SymbolChange, status string) template.HTML {
+	prefix := "+"
+	spanClass := "diff-added"
+	if status == "removed" {
+		prefix = "-"
+		spanClass = "diff-removed"
+	}
+	var b strings.Builder
+	for _, ch := range changes {
+		raw := abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
+		b.WriteString(`<span class="` + spanClass + `">`)
+		b.WriteString(prefix + "   ")
+		b.WriteString(template.HTMLEscapeString(raw))
+		b.WriteString("\n</span>")
+	}
+	return template.HTML(b.String())
+}
+
+// -----------------------------------------------------------------------
+// Type definition blocks (whole struct / interface added or removed)
+// -----------------------------------------------------------------------
+
+func buildTypeDefBlock(ch SymbolChange, status string) typeDefBlockData {
+	body := ch.TypeBody
+	prefix := "+"
+	spanClass := "diff-added"
+	countClass := "add"
+	if status == "removed" {
+		prefix = "-"
+		spanClass = "diff-removed"
+		countClass = "rem"
+	}
+
+	var b strings.Builder
+
+	switch body.Kind {
+	case "struct":
+		b.WriteString(`<span class="diff-context">type `)
+		b.WriteString(template.HTMLEscapeString(ch.Name))
+		b.WriteString(" struct {\n</span>")
+
+		// Align field name column.
+		width := 0
+		for _, f := range body.Fields {
+			parts := strings.Fields(abbreviateImportPaths(f))
+			if len(parts) > 0 && len(parts[0]) > width {
+				width = len(parts[0])
+			}
+		}
+		for _, f := range body.Fields {
+			f = abbreviateImportPaths(f)
+			parts := strings.Fields(f)
+			if len(parts) == 0 {
+				continue
+			}
+			name := parts[0]
+			typ := strings.TrimSpace(strings.TrimPrefix(f, name))
+			pad := width - len(name) + 1
+			if pad < 1 {
+				pad = 1
+			}
+			b.WriteString(`<span class="` + spanClass + `">`)
+			b.WriteString(prefix + "   ")
+			b.WriteString(template.HTMLEscapeString(name))
+			b.WriteString(strings.Repeat(" ", pad))
+			b.WriteString(template.HTMLEscapeString(typ))
+			b.WriteString("\n</span>")
+		}
+		b.WriteString(`<span class="diff-context">}</span>`)
+
+	case "interface":
+		b.WriteString(`<span class="diff-context">type `)
+		b.WriteString(template.HTMLEscapeString(ch.Name))
+		b.WriteString(" interface {\n</span>")
+		for _, m := range body.Methods {
+			sig := abbreviateImportPaths(m)
+			b.WriteString(`<span class="` + spanClass + `">`)
+			b.WriteString(prefix + "   ")
+			b.WriteString(template.HTMLEscapeString(sig))
+			b.WriteString("\n</span>")
+		}
+		b.WriteString(`<span class="diff-context">}</span>`)
+	}
+
+	kindLabel := body.Kind // "struct" or "interface"
+	memberCount := len(body.Fields) + len(body.Methods)
+
+	return typeDefBlockData{
+		KindLabel:  "type " + ch.Name + " " + kindLabel,
+		CountClass: countClass,
+		Count:      memberCount,
+		Body:       template.HTML(b.String()),
+	}
+}
+
+// -----------------------------------------------------------------------
+// Data pipeline (collect → merge → summarize)
+// -----------------------------------------------------------------------
+
 func (d *APIDiff) collectSymbolChanges() []SymbolChange {
 	var changes []SymbolChange
 
@@ -148,51 +656,42 @@ func (d *APIDiff) collectSymbolChanges() []SymbolChange {
 			value := x.Signature
 
 			ch := SymbolChange{
-				Package: x.Path,
-				Kind:    cleanKind,
-				Scope:   scope,
-				Name:    displayAPIName(cleanKind, scope, name),
-				Old:     value,
-				New:     value,
-				Status:  status,
+				Package:  x.Path,
+				Kind:     cleanKind,
+				Scope:    scope,
+				Name:     displayAPIName(cleanKind, scope, name),
+				Old:      value,
+				New:      value,
+				Status:   status,
+				TypeBody: x.TypeBody,
 			}
-
 			if status == "added" {
 				ch.Old = ""
 			} else {
 				ch.New = ""
 			}
-
 			changes = append(changes, ch)
 		}
 	}
 
 	addPkgChanges("added", d.PackagesAdded)
 	addPkgChanges("removed", d.PackagesRemoved)
-
 	addChanges("added", "Func", d.FuncsAdded)
 	addChanges("removed", "Func", d.FuncsRemoved)
-
 	addChanges("added", "Var", d.VarsAdded)
 	addChanges("removed", "Var", d.VarsRemoved)
-
 	addChanges("added", "Const", d.ConstsAdded)
 	addChanges("removed", "Const", d.ConstsRemoved)
-
 	addChanges("added", "Type", d.TypesAdded)
 	addChanges("removed", "Type", d.TypesRemoved)
-
 	addChanges("added", "Field", d.FieldsAdded)
 	addChanges("removed", "Field", d.FieldsRemoved)
-
 	addChanges("added", "Method", d.MethodsAdded)
 	addChanges("removed", "Method", d.MethodsRemoved)
 
 	return mergeIntoChangedSymbols(changes)
 }
 
-// mergeIntoChangedSymbols pairs up add+remove entries for the same symbol into
-// a single "changed" record, leaving unpaired entries as-is.
 func mergeIntoChangedSymbols(raw []SymbolChange) []SymbolChange {
 	added := make(map[string]SymbolChange)
 	removed := make(map[string]SymbolChange)
@@ -320,360 +819,19 @@ func summarizeByPackage(changes []SymbolChange) []PackageChangeSummary {
 	return out
 }
 
-func renderSidebar(w io.Writer, pkgs []PackageChangeSummary) {
-	hfprintf(w, "<aside>\n")
-	hfprintf(w, "<div class=\"brand\">relimpact</div>\n")
-	hfprintf(w, "<div class=\"nav-title\">Packages</div>\n")
-	if len(pkgs) == 0 {
-		hfprintf(w, "<div class=\"empty-nav\">No API changes</div>\n")
-		hfprintf(w, "</aside>\n")
-		return
-	}
-	for _, pkg := range pkgs {
-		navClass := "nav-item"
-		badge := fmt.Sprintf("%d", pkg.Total)
-		if pkg.Breaking > 0 {
-			navClass = "nav-item nav-breaking"
-			badge = fmt.Sprintf("%d breaking", pkg.Breaking)
-		} else if pkg.Added > 0 {
-			navClass = "nav-item nav-added"
-		}
-		hfprintf(w, "<a class=\"%s\" href=\"#%s\"><span title=\"%s\">%s</span><strong>%s</strong></a>\n",
-			esc(navClass), esc(anchorID(pkg.Package)), esc(pkg.Package), esc(shortPackage(pkg.Package)), esc(badge))
-	}
-	hfprintf(w, "</aside>\n")
-}
-
-func renderSummaryCards(w io.Writer, s overallSummary) {
-	hfprintf(w, "<section class=\"cards\">\n")
-	renderCard(w, "Breaking", s.Breaking)
-	renderCard(w, "Changed", s.Changed)
-	renderCard(w, "Removed", s.Removed)
-	renderCard(w, "Added", s.Added)
-	renderCard(w, "Packages", s.ChangedPackages)
-	hfprintf(w, "</section>\n")
-}
-
-func renderCard(w io.Writer, label string, value int) {
-	hfprintf(w, "<div class=\"card\"><div class=\"num\">%d</div><div class=\"label\">%s</div></div>\n", value, esc(label))
-}
-
-// renderBreakingChangeSummary renders a compact cross-package list of all
-// breaking changes (changed + removed) at the top of the report body so
-// reviewers can grasp the full scope before reading per-package details.
-func renderBreakingChangeSummary(w io.Writer, changes []SymbolChange) {
-	var breaking []SymbolChange
-	for _, ch := range changes {
-		if ch.Status == "changed" || ch.Status == "removed" {
-			breaking = append(breaking, ch)
-		}
-	}
-	if len(breaking) == 0 {
-		return
-	}
-
-	hfprintf(w, "<section class=\"breaking-summary\">\n")
-	hfprintf(w, "<div class=\"breaking-summary-title\">Breaking changes at a glance</div>\n")
-	hfprintf(w, "<table class=\"breaking-table\">\n")
-	hfprintf(w, "<thead><tr><th>Symbol</th><th>Kind</th><th>Package</th><th>Change</th></tr></thead>\n")
-	hfprintf(w, "<tbody>\n")
-	for _, ch := range breaking {
-		statusLabel := "Removed"
-		statusCls := "badge badge-breaking"
-		if ch.Status == "changed" {
-			statusLabel = "Changed"
-			statusCls = "badge badge-changed"
-		}
-		hfprintf(w, "<tr><td><code>%s</code></td><td>%s</td><td><code class=\"pkg-path\">%s</code></td><td><span class=\"%s\">%s</span></td></tr>\n",
-			esc(ch.Name), esc(ch.Kind), esc(shortPackage(ch.Package)), esc(statusCls), esc(statusLabel))
-	}
-	hfprintf(w, "</tbody>\n</table>\n</section>\n")
-}
-
-func renderAllPackageChanges(w io.Writer, changes []SymbolChange) {
-	if len(changes) == 0 {
-		hfprintf(w, "<section class=\"empty\">No public API changes detected.</section>\n")
-		return
-	}
-
-	byPkg := make(map[string][]SymbolChange)
-	for _, ch := range changes {
-		byPkg[ch.Package] = append(byPkg[ch.Package], ch)
-	}
-	pkgs := make([]string, 0, len(byPkg))
-	for pkg := range byPkg {
-		pkgs = append(pkgs, pkg)
-	}
-	sort.Strings(pkgs)
-
-	for _, pkg := range pkgs {
-		pkgChanges := byPkg[pkg]
-		sort.Slice(pkgChanges, func(i, j int) bool {
-			if statusRank(pkgChanges[i].Status) != statusRank(pkgChanges[j].Status) {
-				return statusRank(pkgChanges[i].Status) < statusRank(pkgChanges[j].Status)
-			}
-			if kindRank(pkgChanges[i].Kind) != kindRank(pkgChanges[j].Kind) {
-				return kindRank(pkgChanges[i].Kind) < kindRank(pkgChanges[j].Kind)
-			}
-			return pkgChanges[i].Name < pkgChanges[j].Name
-		})
-
-		s := summarizeByPackage(pkgChanges)[0]
-		hfprintf(w, "<section class=\"pkg\" id=\"%s\">\n", esc(anchorID(pkg)))
-		hfprintf(w, "<div class=\"pkg-head\"><div><h2>%s</h2><div class=\"pkg-full\">%s</div></div><div class=\"pkg-counts\">", esc(shortPackage(pkg)), esc(pkg))
-		renderInlineCount(w, "breaking", s.Breaking)
-		renderInlineCount(w, "changed", s.Changed)
-		renderInlineCount(w, "removed", s.Removed)
-		renderInlineCount(w, "added", s.Added)
-		hfprintf(w, "</div></div>\n")
-
-		renderStatusSection(w, "Changed signatures", pkgChanges, "changed")
-		renderStatusSection(w, "Removed API", pkgChanges, "removed")
-		renderStatusSection(w, "Added API", pkgChanges, "added")
-		hfprintf(w, "</section>\n")
-	}
-}
-
-func renderInlineCount(w io.Writer, label string, value int) {
-	if value == 0 {
-		return
-	}
-	cls := "count-neutral"
-	switch label {
-	case "breaking", "removed":
-		cls = "count-breaking"
-	case "added":
-		cls = "count-added"
-	case "changed":
-		cls = "count-changed"
-	}
-	hfprintf(w, "<span class=\"%s\">%d %s</span>", cls, value, esc(label))
-}
-
-func renderStatusSection(w io.Writer, title string, changes []SymbolChange, status string) {
-	var group []SymbolChange
-	for _, ch := range changes {
-		if ch.Status == status {
-			group = append(group, ch)
-		}
-	}
-	if len(group) == 0 {
-		return
-	}
-
-	accentClass := "group-accent-added"
-	if status == "changed" {
-		accentClass = "group-accent-changed"
-	} else if status == "removed" {
-		accentClass = "group-accent-removed"
-	}
-
-	hfprintf(w, "<div class=\"change-group %s\"><div class=\"group-title\">%s</div>\n", accentClass, esc(title))
-	if status == "changed" {
-		for _, ch := range group {
-			renderSignatureChangeCard(w, ch)
-		}
-	} else {
-		renderKindGroups(w, group, status)
-	}
-	hfprintf(w, "</div>\n")
-}
-
-func renderKindGroups(w io.Writer, changes []SymbolChange, status string) {
-	byKind := make(map[string][]SymbolChange)
-	for _, ch := range changes {
-		byKind[ch.Kind] = append(byKind[ch.Kind], ch)
-	}
-
-	for _, kind := range apiKindOrder() {
-		xs := byKind[kind]
-		if len(xs) == 0 {
-			continue
-		}
-
-		sort.Slice(xs, func(i, j int) bool {
-			return xs[i].Name < xs[j].Name
-		})
-
-		if kind == "Field" {
-			renderStructFieldDiffs(w, xs, status)
-			continue
-		}
-		renderKindGroup(w, kind, xs, status)
-	}
-}
-
-func renderKindGroup(w io.Writer, kind string, changes []SymbolChange, status string) {
-	badgeClass := "compact-added"
-	if status == "removed" {
-		badgeClass = "compact-removed"
-	}
-
-	hfprintf(w, "<section class=\"compact-kind\">\n")
-	hfprintf(w, "<div class=\"compact-kind-head\"><span>%s</span><strong class=\"%s\">%d</strong></div>\n",
-		esc(pluralKind(kind)), esc(badgeClass+"-count"), len(changes))
-	hfprintf(w, "<div class=\"compact-list %s\">\n", esc(badgeClass))
-	for _, ch := range changes {
-		renderCompactSymbolRow(w, ch)
-	}
-	hfprintf(w, "</div>\n")
-	hfprintf(w, "</section>\n")
-}
-
-func renderCompactSymbolRow(w io.Writer, ch SymbolChange) {
-	hfprintf(w, "<div class=\"compact-row\">\n")
-
-	switch ch.Kind {
-	case "Func":
-		hfprintf(w, "<code>%s</code>", esc(compactFunc(ch)))
-	case "Method":
-		hfprintf(w, "<code>%s</code>", esc(compactMethod(ch)))
-	case "Var", "Const":
-		name, typ := compactTypedSymbol(ch)
-		hfprintf(w, "<code>%s</code>", esc(name))
-		if typ != "" {
-			hfprintf(w, "<span class=\"compact-type\">%s</span>", esc(typ))
-		}
-	default:
-		hfprintf(w, "<code>%s</code>", esc(formatCompactSymbol(ch, "")))
-	}
-
-	hfprintf(w, "\n</div>\n")
-}
-
-func renderStructFieldDiffs(w io.Writer, changes []SymbolChange, status string) {
-	grouped := groupFieldsByOwner(changes, status)
-	if len(grouped) == 0 {
-		renderKindGroup(w, "Field", changes, status)
-		return
-	}
-
-	owners := make([]string, 0, len(grouped))
-	for owner := range grouped {
-		owners = append(owners, owner)
-	}
-	sort.Strings(owners)
-
-	hfprintf(w, "<section class=\"struct-diff-group\">\n")
-	hfprintf(w, "<div class=\"compact-kind-head\"><span>Struct fields</span><strong>%d</strong></div>\n", len(changes))
-	for _, owner := range owners {
-		renderStructFieldDiff(w, owner, grouped[owner], status)
-	}
-	hfprintf(w, "</section>\n")
-}
-
-func renderStructFieldDiff(w io.Writer, owner string, fields []StructFieldChange, status string) {
-	hfprintf(w, "<article class=\"struct-diff\">\n")
-	hfprintf(w, "<div class=\"struct-diff-title\">type %s struct</div>\n", esc(owner))
-	hfprintf(w, "<pre class=\"struct-pre\">%s</pre>\n", formatStructFieldDiff(owner, fields, status))
-	hfprintf(w, "</article>\n")
-}
-
-// renderSignatureChangeCard renders a full before/after card for a changed
-// symbol using a unified diff view with colored prefix lines.
-func renderSignatureChangeCard(w io.Writer, ch SymbolChange) {
-	subtitle := ch.Kind + " signature"
-
-	hfprintf(w, "<article class=\"change\">\n")
-	hfprintf(w, "<div class=\"change-head\"><div><div class=\"kind\">%s</div><div class=\"symbol\">%s</div></div><span class=\"badge badge-changed\">Changed</span></div>\n",
-		esc(subtitle), esc(ch.Name))
-
-	oldFmt := formatAPIValue(ch.Kind, ch.Scope, ch.Old)
-	newFmt := formatAPIValue(ch.Kind, ch.Scope, ch.New)
-
-	hfprintf(w, "<div class=\"sig-diff\">\n")
-	renderUnifiedDiff(w, oldFmt, newFmt)
-	hfprintf(w, "</div>\n")
-
-	hfprintf(w, "</article>\n")
-}
-
-// renderUnifiedDiff renders old and new signature strings as a unified diff
-// block: removed lines in red with "−", added lines in green with "+", and
-// shared context lines in muted blue-gray.
-func renderUnifiedDiff(w io.Writer, oldSig, newSig string) {
-	oldLines := strings.Split(oldSig, "\n")
-	newLines := strings.Split(newSig, "\n")
-
-	oldSet := make(map[string]bool, len(oldLines))
-	newSet := make(map[string]bool, len(newLines))
-	for _, l := range oldLines {
-		oldSet[l] = true
-	}
-	for _, l := range newLines {
-		newSet[l] = true
-	}
-
-	hfprintf(w, "<pre class=\"sig-unified\">")
-	for _, line := range oldLines {
-		if !newSet[line] {
-			hfprintf(w, "<span class=\"diff-removed\">− %s\n</span>", esc(line))
-		}
-	}
-	for _, line := range oldLines {
-		if newSet[line] {
-			hfprintf(w, "<span class=\"diff-context\">  %s\n</span>", esc(line))
-		}
-	}
-	for _, line := range newLines {
-		if !oldSet[line] {
-			hfprintf(w, "<span class=\"diff-added\">+ %s\n</span>", esc(line))
-		}
-	}
-	hfprintf(w, "</pre>\n")
-}
-
-// formatStructFieldDiff renders the annotated struct body for a group of
-// added or removed fields, with HTML-colored prefix markers.
-func formatStructFieldDiff(owner string, fields []StructFieldChange, status string) string {
-	width := 0
-	for _, f := range fields {
-		if len(f.Name) > width {
-			width = len(f.Name)
-		}
-	}
-
-	prefix := "+"
-	spanClass := "diff-added"
-	if status == "removed" {
-		prefix = "-"
-		spanClass = "diff-removed"
-	}
-
-	var b strings.Builder
-	b.WriteString(`<span class="diff-context">type `)
-	b.WriteString(html.EscapeString(owner))
-	b.WriteString(" struct {\n</span>")
-	for _, f := range fields {
-		padding := width - len(f.Name) + 1
-		if padding < 1 {
-			padding = 1
-		}
-		b.WriteString(`<span class="`)
-		b.WriteString(spanClass)
-		b.WriteString(`">`)
-		b.WriteString(prefix)
-		b.WriteString("   ")
-		b.WriteString(html.EscapeString(f.Name))
-		b.WriteString(strings.Repeat(" ", padding))
-		b.WriteString(html.EscapeString(f.Type))
-		b.WriteString("\n</span>")
-	}
-	b.WriteString(`<span class="diff-context">}</span>`)
-	return b.String()
-}
+// -----------------------------------------------------------------------
+// Field parsing helpers
+// -----------------------------------------------------------------------
 
 func parseFieldChange(ch SymbolChange) (StructFieldChange, bool) {
 	raw := abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old)))
 	if raw == "" {
 		return StructFieldChange{}, false
 	}
-
 	parts := strings.Fields(raw)
 	if len(parts) == 0 {
 		return StructFieldChange{}, false
 	}
-
 	fullName := parts[0]
 	fieldType := strings.TrimSpace(strings.TrimPrefix(raw, fullName))
 	dot := strings.LastIndex(fullName, ".")
@@ -683,7 +841,6 @@ func parseFieldChange(ch SymbolChange) (StructFieldChange, bool) {
 		}
 		return StructFieldChange{Owner: ch.Scope, Name: ch.Name, Type: fieldType, Status: ch.Status}, true
 	}
-
 	return StructFieldChange{Owner: fullName[:dot], Name: fullName[dot+1:], Type: fieldType, Status: ch.Status}, true
 }
 
@@ -706,6 +863,10 @@ func groupFieldsByOwner(changes []SymbolChange, status string) map[string][]Stru
 	}
 	return out
 }
+
+// -----------------------------------------------------------------------
+// Signature formatting
+// -----------------------------------------------------------------------
 
 func formatAPIValue(kind, scope, raw string) string {
 	raw = abbreviateImportPaths(strings.TrimSpace(raw))
@@ -750,7 +911,6 @@ func formatCallable(prefix, scope, name, raw string) string {
 				resParts := splitTopLevel(res)
 				switch len(resParts) {
 				case 0:
-					results = ""
 				case 1:
 					results = " " + resParts[0]
 				default:
@@ -820,26 +980,23 @@ func splitTopLevel(s string) []string {
 		return nil
 	}
 	var out []string
-	start := 0
-	parenDepth := 0
-	bracketDepth := 0
-	braceDepth := 0
+	start, paren, bracket, brace := 0, 0, 0, 0
 	for i, r := range s {
 		switch r {
 		case '(':
-			parenDepth++
+			paren++
 		case ')':
-			parenDepth--
+			paren--
 		case '[':
-			bracketDepth++
+			bracket++
 		case ']':
-			bracketDepth--
+			bracket--
 		case '{':
-			braceDepth++
+			brace++
 		case '}':
-			braceDepth--
+			brace--
 		case ',':
-			if parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 {
+			if paren == 0 && bracket == 0 && brace == 0 {
 				out = append(out, strings.TrimSpace(s[start:i]))
 				start = i + 1
 			}
@@ -849,28 +1006,10 @@ func splitTopLevel(s string) []string {
 	return out
 }
 
-var importPathRE = regexp.MustCompile(`([A-Za-z0-9_./~-]+/[A-Za-z0-9_./~-]+)\.([A-Za-z_][A-Za-z0-9_]*)`)
+// -----------------------------------------------------------------------
+// Compact display helpers
+// -----------------------------------------------------------------------
 
-// abbreviateImportPaths shortens fully-qualified import paths in type strings
-// to just the last path segment, e.g. "github.com/foo/bar.Baz" → "bar.Baz".
-func abbreviateImportPaths(s string) string {
-	return importPathRE.ReplaceAllStringFunc(s, func(match string) string {
-		idx := strings.LastIndex(match, ".")
-		if idx < 0 {
-			return match
-		}
-		path := match[:idx]
-		ident := match[idx+1:]
-		pkg := path
-		if slash := strings.LastIndex(pkg, "/"); slash >= 0 {
-			pkg = pkg[slash+1:]
-		}
-		return pkg + "." + ident
-	})
-}
-
-// formatCompactSymbol returns the short display string for a symbol in a
-// compact (add/remove) list row.
 func formatCompactSymbol(ch SymbolChange, _ string) string {
 	switch ch.Kind {
 	case "Type", "Package":
@@ -957,8 +1096,6 @@ func compactScopedName(scope, name string) string {
 	return scope + "." + name
 }
 
-// extractCallableSignatureParts parses the parameter list and return types
-// from a raw callable signature string.
 func extractCallableSignatureParts(raw string) (params string, results string) {
 	idx := strings.Index(raw, "(")
 	if idx < 0 {
@@ -1022,361 +1159,33 @@ func compactParamList(parts []string) string {
 	return "..."
 }
 
-func apiReportCSS() string {
-	return `<style>
-:root {
-  --bg: #f6f7fb;
-  --panel: #ffffff;
-  --text: #172033;
-  --muted: #667085;
-  --border: #e6e8ef;
-  --soft: #f8fafc;
-  --red: #b42318;
-  --red-bg: #fff1f1;
-  --red-border: #fecaca;
-  --green: #087443;
-  --green-bg: #ecfdf3;
-  --green-border: #bbf7d0;
-  --amber: #b45309;
-  --amber-bg: #fffbeb;
-  --amber-border: #fde68a;
-  --shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+// -----------------------------------------------------------------------
+// Import path abbreviation
+// -----------------------------------------------------------------------
+
+var importPathRE = regexp.MustCompile(`([A-Za-z0-9_./~-]+/[A-Za-z0-9_./~-]+)\.([A-Za-z_][A-Za-z0-9_]*)`)
+
+// abbreviateImportPaths shortens fully-qualified import paths in type strings
+// to just the last path segment, e.g. "github.com/foo/bar.Baz" → "bar.Baz".
+func abbreviateImportPaths(s string) string {
+	return importPathRE.ReplaceAllStringFunc(s, func(match string) string {
+		idx := strings.LastIndex(match, ".")
+		if idx < 0 {
+			return match
+		}
+		path := match[:idx]
+		ident := match[idx+1:]
+		pkg := path
+		if slash := strings.LastIndex(pkg, "/"); slash >= 0 {
+			pkg = pkg[slash+1:]
+		}
+		return pkg + "." + ident
+	})
 }
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-.layout {
-  display: grid;
-  grid-template-columns: 292px minmax(0, 1fr);
-  min-height: 100vh;
-}
-aside {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  overflow: auto;
-  padding: 24px;
-  background: var(--panel);
-  border-right: 1px solid var(--border);
-}
-main {
-  width: min(1160px, 100%);
-  padding: 36px 44px 64px;
-}
-.hero { margin-bottom: 0; }
-.eyebrow {
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-weight: 850;
-  font-size: 12px;
-  margin-bottom: 10px;
-}
-h1 {
-  margin: 0;
-  font-size: 34px;
-  line-height: 1.1;
-  letter-spacing: -0.045em;
-}
-.sub {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 14px;
-}
-.brand {
-  font-weight: 850;
-  letter-spacing: -0.04em;
-  font-size: 22px;
-  margin-bottom: 28px;
-}
-.nav-title {
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 850;
-  font-size: 12px;
-  margin-bottom: 10px;
-}
-.nav-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 0;
-  text-decoration: none;
-  color: var(--text);
-  border-bottom: 1px solid #f1f3f7;
-  font-size: 13px;
-}
-.nav-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nav-item strong { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.nav-breaking strong { color: var(--red); font-weight: 850; }
-.nav-breaking::before {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--red);
-  margin-right: 6px;
-  flex-shrink: 0;
-}
-.nav-added strong { color: var(--green); }
-.empty-nav { color: var(--muted); font-size: 14px; }
-.verdict {
-  margin-top: 26px;
-  border-radius: 18px;
-  padding: 18px 20px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-}
-.verdict-breaking { background: var(--red-bg); border-color: var(--red-border); color: #7f1d1d; }
-.verdict-ok { background: var(--green-bg); border-color: var(--green-border); color: #064e3b; }
-.verdict-title { font-size: 17px; font-weight: 850; }
-.verdict-text { margin-top: 4px; font-size: 14px; }
-.cards {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-  margin: 24px 0 34px;
-}
-.card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 16px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-.num { font-size: 32px; line-height: 1; font-weight: 850; letter-spacing: -0.05em; }
-.label { color: var(--muted); font-size: 13px; margin-top: 8px; }
-.breaking-summary {
-  background: var(--red-bg);
-  border: 1px solid var(--red-border);
-  border-radius: 18px;
-  padding: 18px 20px;
-  margin-bottom: 34px;
-  box-shadow: var(--shadow);
-}
-.breaking-summary-title {
-  font-size: 14px;
-  font-weight: 850;
-  color: var(--red);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 14px;
-}
-.breaking-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.breaking-table th {
-  text-align: left;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 850;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0 12px 10px 0;
-  border-bottom: 1px solid var(--red-border);
-}
-.breaking-table td {
-  padding: 8px 12px 8px 0;
-  border-bottom: 1px solid rgba(254,202,202,0.5);
-  vertical-align: middle;
-}
-.breaking-table tr:last-child td { border-bottom: none; }
-.breaking-table code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
-.pkg-path { color: var(--muted); font-size: 12px; }
-.pkg { margin-top: 34px; scroll-margin-top: 24px; }
-.pkg-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  align-items: flex-end;
-  margin-bottom: 18px;
-}
-.pkg h2 { margin: 0; font-size: 23px; letter-spacing: -0.03em; }
-.pkg-full {
-  margin-top: 5px;
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-}
-.pkg-counts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
-.pkg-counts span { border-radius: 999px; padding: 5px 8px; font-size: 12px; font-weight: 750; }
-.count-neutral { border: 1px solid var(--border); background: var(--panel); color: var(--muted); }
-.count-breaking { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
-.count-changed { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
-.count-added { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
-.change-group { margin-top: 18px; border-left: 3px solid transparent; padding-left: 12px; }
-.group-accent-changed { border-left-color: var(--amber); }
-.group-accent-removed { border-left-color: var(--red); }
-.group-accent-added   { border-left-color: var(--green); }
-.group-title {
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 850;
-  font-size: 12px;
-  margin: 18px 0 10px;
-}
-.change {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 18px;
-  margin-bottom: 12px;
-  box-shadow: var(--shadow);
-}
-.change-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 14px;
-}
-.kind {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 850;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 5px;
-}
-.symbol { font-size: 16px; font-weight: 850; letter-spacing: -0.02em; }
-.badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 6px 9px;
-  font-size: 11px;
-  font-weight: 850;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-}
-.badge-breaking { background: var(--red-bg); color: var(--red); }
-.badge-added { background: var(--green-bg); color: var(--green); }
-.badge-changed { background: var(--amber-bg); color: var(--amber); }
-.sig-diff { margin-top: 6px; }
-.sig-unified {
-  margin: 0;
-  padding: 14px;
-  background: #0b1020;
-  border-radius: 14px;
-  overflow-x: auto;
-  white-space: pre;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 13px;
-  line-height: 1.6;
-}
-.diff-removed { color: #ff8080; background: rgba(180,35,24,0.18); display: block; border-radius: 3px; }
-.diff-added   { color: #6ee7b7; background: rgba(8,116,67,0.2);   display: block; border-radius: 3px; }
-.diff-context { color: #8899bb; display: block; }
-pre {
-  margin: 0;
-  padding: 14px;
-  background: #0b1020;
-  color: #e8eefc;
-  border-radius: 14px;
-  overflow-x: auto;
-  white-space: pre;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 13px;
-  line-height: 1.55;
-}
-.compact-kind,
-.struct-diff-group {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  margin-bottom: 12px;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-}
-.compact-kind-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 13px 16px;
-  background: var(--soft);
-  border-bottom: 1px solid var(--border);
-}
-.compact-kind-head span { font-size: 13px; font-weight: 850; letter-spacing: 0.02em; }
-.compact-kind-head strong { font-size: 12px; font-weight: 850; border-radius: 999px; padding: 2px 8px; }
-.compact-added-count   { background: var(--green-bg); color: var(--green); }
-.compact-removed-count { background: var(--red-bg);   color: var(--red); }
-.compact-list { padding: 8px; }
-.compact-row {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
-  align-items: baseline;
-  gap: 16px;
-  padding: 9px 10px;
-  border-radius: 12px;
-}
-.compact-row + .compact-row { margin-top: 2px; }
-.compact-row:hover { background: #f8fafc; }
-.compact-row code,
-.struct-diff-title {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-}
-.compact-row code { font-size: 13px; color: var(--text); word-break: break-word; }
-.compact-type {
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-  text-align: right;
-  white-space: nowrap;
-}
-.compact-added .compact-row code::before {
-  content: "+";
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  margin-right: 8px;
-  color: var(--green);
-  font-weight: 900;
-}
-.compact-removed .compact-row code::before {
-  content: "−";
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  margin-right: 8px;
-  color: var(--red);
-  font-weight: 900;
-}
-.struct-diff { padding: 14px 16px 16px; }
-.struct-diff + .struct-diff { border-top: 1px solid var(--border); }
-.struct-diff-title { font-size: 13px; font-weight: 850; margin-bottom: 8px; color: var(--text); }
-.struct-pre { margin: 0; padding: 14px; background: #0b1020; border-radius: 14px; }
-.empty {
-  margin-top: 28px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 24px;
-  color: var(--muted);
-}
-@media (max-width: 900px) {
-  .layout { display: block; }
-  aside { position: static; width: auto; height: auto; }
-  main { padding: 28px 20px 44px; }
-  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pkg-head { display: block; }
-  .pkg-counts { justify-content: flex-start; margin-top: 10px; }
-  .compact-row { grid-template-columns: 1fr; gap: 6px; }
-  .compact-type { text-align: left; white-space: normal; }
-}
-</style>
-`
-}
+
+// -----------------------------------------------------------------------
+// Label / name utilities
+// -----------------------------------------------------------------------
 
 func cleanAPILabel(fallback, label string) string {
 	if strings.TrimSpace(label) == "" {
@@ -1527,10 +1336,6 @@ func firstNonEmpty(xs ...string) string {
 		}
 	}
 	return ""
-}
-
-func esc(s string) string {
-	return html.EscapeString(s)
 }
 
 func defaultString(s, fallback string) string {
