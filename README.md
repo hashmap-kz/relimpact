@@ -1,100 +1,151 @@
 # relimpact
 
-**Release Impact Analyzer for Go projects - catch breaking API changes, docs updates & important file diffs - fast.**
+**Fast API compatibility reports for Go projects.**
+
+`relimpact` compares two Git refs, snapshots the exported Go API, and shows what changed: breaking changes first,
+compatible additions below.
+
+It answers one release question:
+
+> Did this change break public Go API?
 
 [![License](https://img.shields.io/github/license/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/blob/master/LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/hashmap-kz/relimpact)](https://goreportcard.com/report/github.com/hashmap-kz/relimpact)
 [![Go Reference](https://pkg.go.dev/badge/github.com/hashmap-kz/relimpact.svg)](https://pkg.go.dev/github.com/hashmap-kz/relimpact)
 [![Workflow Status](https://img.shields.io/github/actions/workflow/status/hashmap-kz/relimpact/ci.yml?branch=master)](https://github.com/hashmap-kz/relimpact/actions/workflows/ci.yml?query=branch:master)
-[![codecov](https://codecov.io/gh/hashmap-kz/relimpact/branch/master/graph/badge.svg)](https://codecov.io/gh/hashmap-kz/relimpact)
 [![GitHub Issues](https://img.shields.io/github/issues/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/issues)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/blob/master/go.mod#L3)
 [![Latest Release](https://img.shields.io/github/v/release/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/releases/latest)
 
-<!-- omit in toc -->
-## Table of Contents
+## Why
 
-<!-- TOC tocDepth:2..3 chapterDepth:2..6 -->
+Go API changes are easy to miss in a normal diff.
 
-- [relimpact](#relimpact)
-  - [Features](#features)
-  - [Quickstart](#quickstart)
-    - [Run on a GitHub PR](#run-on-a-github-pr)
-    - [Example Output](#example-output)
-  - [GitHub Action](#github-action)
-  - [Installation](#installation)
-    - [Manual Installation](#manual-installation)
-    - [Installation script for Unix-Based OS _(requires: tar, curl, jq)_](#installation-script-for-unix-based-os-requires-tar-curl-jq)
-    - [Homebrew installation](#homebrew-installation)
-    - [Package-Based installation (suitable in CI/CD)](#package-based-installation-suitable-in-cicd)
-      - [Debian](#debian)
-      - [Alpine Linux](#alpine-linux)
-  - [Design Notes](#design-notes)
-    - [1. Go Source API Changes](#1-go-source-api-changes)
-    - [2. Markdown Docs Changes](#2-markdown-docs-changes)
-    - [3. Other Files Changes](#3-other-files-changes)
-  - [License](#license)
+A renamed field, removed method, or changed return type can silently break users. 
+`relimpact` turns those changes into a release-friendly report.
 
-<!-- /TOC -->
+It is intentionally focused on **exported Go API only**
 
----
+## What it detects
 
-## Features
+`relimpact` reports changes to exported:
 
-- **API Diff** – Track breaking public API changes (structs, interfaces, functions, constants, variables) to prevent
-  surprises for your users.
-- **Docs Diff** – Section-aware, heading-aware Markdown diff to highlight meaningful content changes, not noisy line
-  diffs.
-- **Other Files Diff** – Group file changes by extension (.sh, .sql, .json, etc.) to surface important migrations,
-  scripts, and auxiliary file updates.
-- **Designed for Release PR reviews** – Helps reviewers quickly see the real impact of changes at a glance.
-- **Human-friendly Markdown Reports** – Ready to paste into GitHub Releases, Slack, or changelogs.
-- **Works in GitHub Actions, GitLab CI, or locally** – Integrates easily into your CI pipelines or local release
-  process.
-- **No server required** – Pure CLI tool. No services to deploy or manage - works entirely from your Git repo and
-  terminal.
+- packages
+- types
+- functions
+- methods
+- struct fields
+- interface methods
+- constants
+- variables
 
----
+The report separates:
 
-## Quickstart
+- **Breaking changes** - changed or removed API.
+- **New API** - compatible additions.
 
-**[`^        back to top        ^`](#table-of-contents)**
+## Usage
 
-### Run on a GitHub PR
+Markdown output is the default:
 
 ```bash
-relimpact --old=v1.0.0 --new=HEAD > release-impact.md
+relimpact --old=v1.0.0 --new=HEAD > api-report.md
 ```
 
-### Example Output
+HTML output:
 
-![Basic Changelog](https://github.com/hashmap-kz/assets/blob/main/relimpact/examples/basic-changelog.png)
+```bash
+relimpact --old=v1.0.0 --new=HEAD --format=html > api-report.html
+```
 
-**Expanded sections**
+Run against another repository:
 
-![Expanded Changelog](https://github.com/hashmap-kz/assets/blob/main/relimpact/examples/basic-changelog-expanded.png)
+```bash
+relimpact --dir=/path/to/repo --old=v1.0.0 --new=HEAD
+```
 
-**PR Comment Generated**
+Use maximum concurrency:
 
-![PR Comment](https://github.com/hashmap-kz/assets/blob/main/relimpact/examples/pr-comment.png)
+```bash
+relimpact --old=v1.0.0 --new=HEAD --greedy
+```
 
---- 
+## Output
 
-## GitHub Action
+Markdown is optimized for PR comments and release notes.
 
-**[`^        back to top        ^`](#table-of-contents)**
+HTML is optimized for CI artifacts and release review. It includes:
+
+- compatibility verdict
+- summary cards
+- breaking changes first
+- new API below
+- package navigation
+- clean signature diffs
+- compact groups for added/removed symbols
+- readable struct and interface diffs
+
+## Example
+
+```diff
+## Breaking changes
+
+### github.com/acme/project/config
+
+#### Changed signatures
+
+- func Load(path string) *Config
++ func Load(path string) (*Config, error)
+
+#### Removed API
+
+Functions
+
+- MustLoad(string) *Config
+
+Struct fields
+
+type Config struct {
+-   LegacyMode bool
+}
+
+## New API
+
+### github.com/acme/project/config
+
+#### Added API
+
+Functions
+
++ FromEnv(string) (*Config, error)
+
+Struct fields
+
+type Config struct {
++   Retention RetentionConfig
+}
+```
+
+## Cache
+
+`relimpact` can cache API snapshots between CI runs.
+
+```bash
+RELIMPACT_API_CACHE_DIR=.cache/relimpact-api-cache \
+relimpact --old=v1.0.0 --new=HEAD --format=html > api-report.html
+```
+
+## GitHub Actions
 
 ```yaml
-name: Release Impact on PR
+name: API compatibility
 
 on:
   pull_request:
     branches: [ master ]
-    types: [ opened, synchronize, reopened ]
 
 jobs:
-  release-impact:
-    name: Generate Release Impact Report
+  relimpact:
     runs-on: ubuntu-latest
 
     steps:
@@ -102,201 +153,39 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine previous tag
-        id: prevtag
+      - name: Generate API report
         run: |
-          git fetch --tags
-          TAG_LIST=$(git tag --sort=-version:refname)
-          PREV_TAG=$(echo "$TAG_LIST" | head -n2 | tail -n1)
-          echo "Previous tag: $PREV_TAG"
-          # Fallback to first tag if no previous
-          if [ -z "$PREV_TAG" ]; then
-            PREV_TAG=$(echo "$TAG_LIST" | head -n1)
-            echo "Fallback to first tag: $PREV_TAG"
-          fi
-          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          relimpact \
+            --old="${{ github.event.pull_request.base.sha }}" \
+            --new="${{ github.event.pull_request.head.sha }}" \
+            --format=html \
+            > api-report.html
 
-      - name: Determine new ref
-        id: newref
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "new_ref=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
-          else
-            echo "new_ref=HEAD" >> $GITHUB_OUTPUT
-          fi
-
-      # Cache restore for old ref
-      - name: Cache API snapshot (old ref)
-        uses: actions/cache/restore@v4
-        id: cache-old
-        with:
-          path: .cache/relimpact-api-cache
-          key: relimpact-api-${{ steps.prevtag.outputs.prev_tag }}
-          restore-keys: |
-            relimpact-api-
-
-      # Cache restore for new ref
-      - name: Cache API snapshot (new ref)
-        uses: actions/cache/restore@v4
-        id: cache-new
-        with:
-          path: .cache/relimpact-api-cache
-          key: relimpact-api-${{ steps.newref.outputs.new_ref }}
-          restore-keys: |
-            relimpact-api-
-
-      # Run your relimpact-action (this runs SnapshotAPI and writes cache)
-      - uses: hashmap-kz/relimpact-action@main
-        with:
-          old-ref: ${{ steps.prevtag.outputs.prev_tag }}
-          new-ref: ${{ steps.newref.outputs.new_ref }}
-          output: release-impact.md
-        env:
-          RELIMPACT_API_CACHE_DIR: ${{ github.workspace }}/.cache/relimpact-api-cache
-
-      # Cache save for old ref — only if not already restored
-      - name: Save API snapshot cache (old ref)
-        if: steps.cache-old.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: .cache/relimpact-api-cache
-          key: relimpact-api-${{ steps.prevtag.outputs.prev_tag }}
-
-      # Cache save for new ref — only if not already restored
-      - name: Save API snapshot cache (new ref)
-        if: steps.cache-new.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: .cache/relimpact-api-cache
-          key: relimpact-api-${{ steps.newref.outputs.new_ref }}
-
-      # Upload the release impact report
-      - name: Upload Release Impact Report
+      - name: Upload API report
         uses: actions/upload-artifact@v4
         with:
-          name: release-impact-${{ github.run_id }}-${{ github.run_attempt }}
-          path: release-impact.md
-
-      # Post release impact to PR comment
-      - name: Post Release Impact to PR
-        if: github.event_name == 'pull_request'
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          recreate: true
-          path: release-impact.md
+          name: api-report
+          path: api-report.html
 ```
 
----
+## Install
 
-## Installation
-
-**[`^        back to top        ^`](#table-of-contents)**
-
-### Manual Installation
-
-1. Download the latest binary for your platform from
-   the [Releases page](https://github.com/hashmap-kz/relimpact/releases).
-2. Place the binary in your system's `PATH` (e.g., `/usr/local/bin`).
-
-### Installation script for Unix-Based OS _(requires: tar, curl, jq)_
+Using Go:
 
 ```bash
-(
-set -euo pipefail
-
-OS="$(uname | tr '[:upper:]' '[:lower:]')"
-ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')"
-TAG="$(curl -s https://api.github.com/repos/hashmap-kz/relimpact/releases/latest | jq -r .tag_name)"
-
-curl -L "https://github.com/hashmap-kz/relimpact/releases/download/${TAG}/relimpact_${TAG}_${OS}_${ARCH}.tar.gz" |
-tar -xzf - -C /usr/local/bin && \
-chmod +x /usr/local/bin/relimpact
-)
+go install github.com/hashmap-kz/relimpact@latest
 ```
 
-### Homebrew installation
+Or download a binary from the [Releases page](https://github.com/hashmap-kz/relimpact/releases).
 
-```bash
-brew tap hashmap-kz/homebrew-tap
-brew install relimpact
-```
+## Philosophy
 
-### Package-Based installation (suitable in CI/CD)
+`relimpact` is not a changelog generator.
 
-#### Debian
+It is a compatibility report for exported Go API.
 
-```bash
-sudo apt update -y && sudo apt install -y curl
-curl -LO https://github.com/hashmap-kz/relimpact/releases/latest/download/relimpact_linux_amd64.deb
-sudo dpkg -i relimpact_linux_amd64.deb
-```
-
-#### Alpine Linux
-
-```bash
-apk update && apk add --no-cache bash curl
-curl -LO https://github.com/hashmap-kz/relimpact/releases/latest/download/relimpact_linux_amd64.apk
-apk add relimpact_linux_amd64.apk --allow-untrusted
-```
-
----
-
-## Design Notes
-
-**[`^        back to top        ^`](#table-of-contents)**
-
-`relimpact` helps you understand **what really changed** between Git refs, in a way that is:
-
-> **Human-friendly** / **Structured** / **Noise-free** / **Release-ready**
-
-### 1. Go Source API Changes
-
-- Tracks changes to your **public exported API**:
-    - `struct` fields
-    - `interfaces` and their methods
-    - `functions`
-    - `methods`
-    - `constants`
-    - `variables`
-
-- Built on top of **Go type system and AST parsing**:
-    - Uses `golang.org/x/tools/go/packages` to understand the real API, not just text diffs.
-    - **Ignores formatting changes**, reordering, comments -> only tracks semantic API impact.
-    - Detects **breaking changes**, such as:
-        - method signature changes
-        - removed fields
-        - removed types
-        - changed constants
-        - new API elements.
-
-### 2. Markdown Docs Changes
-
-- Tracks changes in **Markdown files**:
-    - any `.md` in your repo.
-
-- Uses **Markdown AST parsing**:
-    - Based on `goldmark` parser.
-    - Understands:
-        - Headings (added / removed)
-        - Links (added / removed)
-        - Images (added / removed)
-        - **Section-level word count diffs** -> detect real content changes -> not noisy line diffs.
-
-- Provides a **highly readable report**:
-    - No messy raw `git diff` output.
-    - Clear "Section X: 142 -> 155 words" style diffs.
-    - Great for docs-heavy projects and libraries.
-
-### 3. Other Files Changes
-
-- Tracks other file changes, grouped by extension:
-    - `.sh`, `.sql`, `.json`, `.yaml`, `.conf`, `.ini`, `.txt`, etc.
-
-- Built on top of **Git diff**:
-    - Uses `git diff --name-status` under the hood.
-    - Groups files per extension -> clean, easy to review.
-
----
+If it changed what your users can import, call, implement, or compile against, it belongs in the report. 
+If it did not, it stays out.
 
 ## License
 
