@@ -21,9 +21,15 @@ It answers one release question:
 
 ## Report
 
+**Breaking Changes**
+
 ![Breaking Changes](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/01-relimpact-breaking-changes.png)
 
+**New Features**
+
 ![New Features](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/02-relimpact-new-features.png)
+
+**PR report**
 
 ![Markdown Format](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/04-relimpact-markdown.png)
 
