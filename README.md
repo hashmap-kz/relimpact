@@ -44,6 +44,23 @@ The report separates:
 - **Breaking changes** - changed or removed API.
 - **New API** - compatible additions.
 
+## Install
+
+Using Go:
+
+```bash
+go install github.com/hashmap-kz/relimpact@latest
+```
+
+Brew:
+
+```bash
+brew tap hashmap-kz/homebrew-tap
+brew install relimpact
+```
+
+Or download a binary from the [Releases page](https://github.com/hashmap-kz/relimpact/releases).
+
 ## Usage
 
 Markdown output is the default:
@@ -167,16 +184,6 @@ jobs:
           name: api-report
           path: api-report.html
 ```
-
-## Install
-
-Using Go:
-
-```bash
-go install github.com/hashmap-kz/relimpact@latest
-```
-
-Or download a binary from the [Releases page](https://github.com/hashmap-kz/relimpact/releases).
 
 ## Philosophy
 
