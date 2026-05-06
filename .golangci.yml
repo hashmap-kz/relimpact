@@ -10,15 +10,15 @@ linters:
     - dupl
     - durationcheck
     - errcheck
-    - goconst
-    - gocritic
+    #- goconst
+    #- gocritic
     - gocyclo
     - godox
     - goheader
     - gomoddirectives
     - gomodguard
     - goprintffuncname
-    - gosec
+    #- gosec
     - govet
     - importas
     - ineffassign

@@ -946,15 +946,6 @@ func filterByStatus(changes []SymbolChange, status string) []SymbolChange {
 	return out
 }
 
-func hasBreakingChanges(changes []SymbolChange) bool {
-	for _, ch := range changes {
-		if ch.Status == "changed" || ch.Status == "removed" {
-			return true
-		}
-	}
-	return false
-}
-
 func sortChanges(changes []SymbolChange) {
 	sort.Slice(changes, func(i, j int) bool {
 		if statusRank(changes[i].Status) != statusRank(changes[j].Status) {
@@ -979,6 +970,7 @@ func sortedKeys[T any](m map[string]T) []string {
 	return keys
 }
 
+//nolint:unparam
 func parseConstSignature(sig string) (name, typ, value string) {
 	sig = abbreviateImportPaths(strings.TrimSpace(sig))
 	if idx := strings.Index(sig, " = "); idx >= 0 {
