@@ -83,7 +83,7 @@ const reportTemplates = `
 
 
 {{define "pkg-section"}}
-<section class="pkg" id="{{.AnchorID}}">
+<section class="pkg{{if .IsBreaking}} breaking{{end}}" id="{{.AnchorID}}">
   <div class="pkg-head">
     <div class="pkg-name">{{.ShortName}}</div>
     <div class="pkg-path">{{.Package}}</div>
@@ -192,11 +192,11 @@ body {
   line-height: 1.5;
 }
 .layout {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  display: flex;
   min-height: 100vh;
 }
 aside {
+  flex-shrink: 0;
   position: sticky;
   top: 0;
   height: 100vh;
@@ -206,8 +206,10 @@ aside {
   border-right: 0.5px solid var(--border);
 }
 main {
-  padding: 28px 36px 56px;
+  flex: 1;
+  min-width: 0;
   max-width: 860px;
+  padding: 28px 36px 56px;
 }
 .brand {
   font-weight: 800;
@@ -304,15 +306,12 @@ h1 {
 }
 .lbl { font-size: 11px; color: var(--muted); margin-top: 3px; }
 .pkg {
-  background: var(--panel);
-  border: 0.5px solid var(--border);
-  border-radius: 8px;
-  padding: 14px 16px;
-  margin-bottom: 10px;
+  padding: 28px 0;
+  border-top: 1px solid var(--border);
 }
-.pkg.breaking { border-top: 2px solid var(--red-border); padding-top: 12px; }
+.pkg:first-of-type { border-top: none; padding-top: 0; }
 .pkg-head {
-  padding-bottom: 10px;
+  padding-bottom: 8px;
   border-bottom: 0.5px solid var(--border);
   margin-bottom: 10px;
 }
