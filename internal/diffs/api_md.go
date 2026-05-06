@@ -2,136 +2,147 @@ package diffs
 
 import (
 	"fmt"
-	"sort"
 	"strings"
-
-	"github.com/hashmap-kz/relimpact/internal/x/fmtx"
 )
 
 func (d *APIDiff) String() string {
-	var sb strings.Builder
-	sb.WriteString("## API Changes\n")
+	return d.Markdown(ReportMetadata{})
+}
 
-	type summaryRow struct {
-		Name    string
-		Added   int
-		Removed int
+func (d *APIDiff) Markdown(meta ReportMetadata) string {
+	data := d.buildReportData(meta)
+
+	var b strings.Builder
+	writeMarkdownHeader(&b, data)
+	writeMarkdownContents(&b, data)
+
+	if len(data.Breaking) > 0 {
+		writeMarkdownPageBlock(&b, "Breaking changes", data.Breaking)
+	}
+	if len(data.Added) > 0 {
+		writeMarkdownPageBlock(&b, "New API", data.Added)
+	}
+	if len(data.Breaking) == 0 && len(data.Added) == 0 {
+		b.WriteString("\nNo public API changes detected.\n")
 	}
 
-	summary := []summaryRow{
-		{"Funcs", len(d.FuncsAdded), len(d.FuncsRemoved)},
-		{"Vars", len(d.VarsAdded), len(d.VarsRemoved)},
-		{"Consts", len(d.ConstsAdded), len(d.ConstsRemoved)},
-		{"Types", len(d.TypesAdded), len(d.TypesRemoved)},
-		{"Fields", len(d.FieldsAdded), len(d.FieldsRemoved)},
-		{"Methods", len(d.MethodsAdded), len(d.MethodsRemoved)},
-	}
+	return strings.TrimRight(b.String(), "\n") + "\n"
+}
 
-	var totalAdded, totalRemoved int
-	for _, s := range summary {
-		totalAdded += s.Added
-		totalRemoved += s.Removed
-	}
+func writeMarkdownHeader(b *strings.Builder, data reportData) {
+	b.WriteString("# API compatibility report\n\n")
+	fmt.Fprintf(b, "`%s` → `%s`\n\n", data.Meta.OldRef, data.Meta.NewRef)
 
-	// TOC
-	sb.WriteString("\n- [Summary](#summary)\n")
-	sb.WriteString("- [Breaking Changes](#breaking-changes)\n")
-	sb.WriteString("- [Package Changes](#package-changes)\n")
-
-	// Summary table
-	sb.WriteString("\n### Summary\n\n")
-	sb.WriteString("| Kind     | Added | Removed |\n")
-	sb.WriteString("|----------|------:|--------:|\n")
-	for _, s := range summary {
-		fmtx.Fprintf(&sb, "| %-8s | %5d | %7d |\n", s.Name, s.Added, s.Removed)
-	}
-	fmtx.Fprintf(&sb, "| %-8s | %5d | %7d |\n", "Total", totalAdded, totalRemoved)
-
-	// Breaking Changes section
-	sb.WriteString("\n### Breaking Changes\n\n")
-	if totalRemoved == 0 {
-		sb.WriteString("_No breaking changes detected._\n")
+	if data.Summary.Breaking > 0 {
+		b.WriteString("> ⚠️ **Breaking API changes detected.** Review before release.\n\n")
 	} else {
-		for _, s := range summary {
-			if s.Removed > 0 {
-				fmtx.Fprintf(&sb, "- %s Removed: **%d**\n", s.Name, s.Removed)
-			}
-		}
+		b.WriteString("> ✅ **No breaking API changes detected.**\n\n")
 	}
 
-	type changeKind string
-	const (
-		added   changeKind = "Added"
-		removed changeKind = "Removed"
+	b.WriteString("| Breaking | Changed | Removed | Added | Packages |\n")
+	b.WriteString("|---:|---:|---:|---:|---:|\n")
+	fmt.Fprintf(
+		b,
+		"| %d | %d | %d | %d | %d |\n\n",
+		data.Summary.Breaking,
+		data.Summary.Changed,
+		data.Summary.Removed,
+		data.Summary.Added,
+		data.Summary.ChangedPackages,
 	)
+}
 
-	groupByPkgLabel := func(items []DiffItem, kind changeKind) map[string]map[string][]string {
-		group := make(map[string]map[string][]string)
-		for _, res := range items {
-			if _, ok := group[res.Path]; !ok {
-				group[res.Path] = make(map[string][]string)
-			}
-			key := fmt.Sprintf("%s %s", kind, res.Label)
-			group[res.Path][key] = append(group[res.Path][key], res.Signature)
-		}
-		return group
+func writeMarkdownContents(b *strings.Builder, data reportData) {
+	if len(data.Sidebar.Breaking)+len(data.Sidebar.Added) <= 3 {
+		return
 	}
 
-	grouped := make(map[string]map[string][]string)
-	mergeGroup := func(m map[string]map[string][]string) {
-		for pkg, labels := range m {
-			if _, ok := grouped[pkg]; !ok {
-				grouped[pkg] = make(map[string][]string)
-			}
-			for label, xs := range labels {
-				grouped[pkg][label] = append(grouped[pkg][label], xs...)
-			}
+	b.WriteString("## Contents\n\n")
+	if len(data.Sidebar.Breaking) > 0 {
+		b.WriteString("### Breaking changes\n\n")
+		for _, entry := range data.Sidebar.Breaking {
+			fmt.Fprintf(b, "- `%s` — %d\n", entry.Package, entry.Count)
 		}
+		b.WriteByte('\n')
 	}
-
-	mergeGroup(groupByPkgLabel(d.FuncsAdded, added))
-	mergeGroup(groupByPkgLabel(d.FuncsRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.VarsAdded, added))
-	mergeGroup(groupByPkgLabel(d.VarsRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.ConstsAdded, added))
-	mergeGroup(groupByPkgLabel(d.ConstsRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.TypesAdded, added))
-	mergeGroup(groupByPkgLabel(d.TypesRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.FieldsAdded, added))
-	mergeGroup(groupByPkgLabel(d.FieldsRemoved, removed))
-	mergeGroup(groupByPkgLabel(d.MethodsAdded, added))
-	mergeGroup(groupByPkgLabel(d.MethodsRemoved, removed))
-
-	if len(grouped) > 0 {
-		sb.WriteString("\n### Package Changes\n")
-		pkgs := make([]string, 0, len(grouped))
-		for pkg := range grouped {
-			pkgs = append(pkgs, pkg)
+	if len(data.Sidebar.Added) > 0 {
+		b.WriteString("### New API\n\n")
+		for _, entry := range data.Sidebar.Added {
+			fmt.Fprintf(b, "- `%s` — %d\n", entry.Package, entry.Count)
 		}
-		sort.Strings(pkgs)
-
-		for _, pkg := range pkgs {
-			fmtx.Fprintf(&sb, "\n#### Package `%s`\n\n", pkg)
-			sb.WriteString("<details>\n<summary>Click to expand</summary>\n\n")
-
-			labels := make([]string, 0, len(grouped[pkg]))
-			for label := range grouped[pkg] {
-				labels = append(labels, label)
-			}
-			sort.Strings(labels)
-
-			for _, label := range labels {
-				fmtx.Fprintf(&sb, "- %s:\n", label)
-				xs := grouped[pkg][label]
-				sort.Strings(xs)
-				for _, x := range xs {
-					fmtx.Fprintf(&sb, "    - %s\n", x)
-				}
-			}
-
-			sb.WriteString("\n</details>\n")
-		}
+		b.WriteByte('\n')
 	}
+}
 
-	return sb.String()
+func writeMarkdownPageBlock(b *strings.Builder, title string, sections []pkgSectionData) {
+	fmt.Fprintf(b, "## %s\n\n", title)
+	for _, section := range sections {
+		writeMarkdownPackageSection(b, section)
+	}
+}
+
+func writeMarkdownPackageSection(b *strings.Builder, section pkgSectionData) {
+	fmt.Fprintf(b, "### `%s`\n\n", section.Package)
+	for _, status := range section.StatusSections {
+		writeMarkdownStatusSection(b, status)
+	}
+}
+
+func writeMarkdownStatusSection(b *strings.Builder, section statusSectionData) {
+	fmt.Fprintf(b, "#### %s\n\n", section.Title)
+
+	for _, card := range section.ChangeCards {
+		writeMarkdownChangeCard(b, card)
+	}
+	for _, group := range section.KindGroups {
+		writeMarkdownKindGroup(b, group)
+	}
+	for _, block := range section.TypeDefBlocks {
+		writeMarkdownTypeDefBlock(b, block)
+	}
+	for _, diff := range section.StructFieldDiffs {
+		writeMarkdownStructFieldDiff(b, diff)
+	}
+}
+
+func writeMarkdownChangeCard(b *strings.Builder, card changeCardData) {
+	fmt.Fprintf(b, "**%s**\n\n", card.Name)
+	b.WriteString("```diff\n")
+	writePrefixedMarkdownBlock(b, "-", card.OldSignature)
+	writePrefixedMarkdownBlock(b, "+", card.NewSignature)
+	b.WriteString("```\n\n")
+}
+
+func writeMarkdownKindGroup(b *strings.Builder, group kindGroupData) {
+	fmt.Fprintf(b, "**%s**\n\n", group.KindLabel)
+	b.WriteString("```diff\n")
+	for _, row := range group.Rows {
+		line := row.Code
+		if row.Type != "" {
+			line += " " + row.Type
+		}
+		fmt.Fprintf(b, "%s %s\n", row.Prefix, line)
+	}
+	b.WriteString("```\n\n")
+}
+
+func writeMarkdownTypeDefBlock(b *strings.Builder, block typeDefBlockData) {
+	fmt.Fprintf(b, "**%s**\n\n", block.KindLabel)
+	b.WriteString("```diff\n")
+	b.WriteString(strings.TrimRight(block.Text, "\n"))
+	b.WriteString("\n```\n\n")
+}
+
+func writeMarkdownStructFieldDiff(b *strings.Builder, diff structFieldDiffData) {
+	fmt.Fprintf(b, "**%s**\n\n", diff.Title)
+	b.WriteString("```diff\n")
+	b.WriteString(strings.TrimRight(diff.Text, "\n"))
+	b.WriteString("\n```\n\n")
+}
+
+func writePrefixedMarkdownBlock(b *strings.Builder, prefix, text string) {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	for _, line := range lines {
+		fmt.Fprintf(b, "%s %s\n", prefix, line)
+	}
 }

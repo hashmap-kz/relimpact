@@ -105,9 +105,11 @@ type statusSectionData struct {
 }
 
 type changeCardData struct {
-	KindLabel   string
-	Name        string
-	UnifiedDiff template.HTML
+	KindLabel    string
+	Name         string
+	OldSignature string
+	NewSignature string
+	UnifiedDiff  template.HTML
 }
 
 type kindGroupData struct {
@@ -130,6 +132,7 @@ type structFieldDiffData struct {
 	CountClass string
 	Count      int
 	Body       template.HTML
+	Text       string
 }
 
 type typeDefBlockData struct {
@@ -137,6 +140,7 @@ type typeDefBlockData struct {
 	CountClass string
 	Count      int
 	Body       template.HTML
+	Text       string
 }
 
 var reportTmpl = template.Must(
@@ -151,6 +155,17 @@ var reportTmpl = template.Must(
 )
 
 func (d *APIDiff) HTML(meta ReportMetadata) string {
+	data := d.buildReportData(meta)
+	data.CSS = template.HTML(reportCSS)
+
+	var sb strings.Builder
+	if err := reportTmpl.ExecuteTemplate(&sb, "report", data); err != nil {
+		return "<!-- template error: " + err.Error() + " -->"
+	}
+	return sb.String()
+}
+
+func (d *APIDiff) buildReportData(meta ReportMetadata) reportData {
 	if meta.Now.IsZero() {
 		meta.Now = time.Now()
 	}
@@ -158,11 +173,10 @@ func (d *APIDiff) HTML(meta ReportMetadata) string {
 	changes := d.collectSymbolChanges()
 	packages := summarizeByPackage(changes)
 	summary := summarizeOverall(packages)
-	breakingSections := buildPackageSections(changes, "breaking")
-	addedSections := buildPackageSections(changes, "added")
+	breaking := buildPackageSections(changes, "breaking")
+	added := buildPackageSections(changes, "added")
 
-	data := reportData{
-		CSS: template.HTML(reportCSS),
+	return reportData{
 		Meta: reportMetaData{
 			Repo:        defaultString(meta.Repo, "repository"),
 			OldRef:      defaultString(meta.OldRef, "old"),
@@ -171,16 +185,10 @@ func (d *APIDiff) HTML(meta ReportMetadata) string {
 		},
 		Verdict:  buildVerdict(summary),
 		Summary:  summary,
-		Sidebar:  buildSidebar(breakingSections, addedSections),
-		Breaking: breakingSections,
-		Added:    addedSections,
+		Sidebar:  buildSidebar(breaking, added),
+		Breaking: breaking,
+		Added:    added,
 	}
-
-	var sb strings.Builder
-	if err := reportTmpl.ExecuteTemplate(&sb, "report", data); err != nil {
-		return "<!-- template error: " + err.Error() + " -->"
-	}
-	return sb.String()
 }
 
 func buildVerdict(summary overallSummary) verdictData {
@@ -205,53 +213,22 @@ func buildSidebar(breaking, added []pkgSectionData) sidebarData {
 	}
 }
 
-func buildSidebarEntries(sections []pkgSectionData, status string) []sidebarEntry {
+func buildSidebarEntries(sections []pkgSectionData, mode string) []sidebarEntry {
 	out := make([]sidebarEntry, 0, len(sections))
 	for _, section := range sections {
 		out = append(out, sidebarEntry{
 			AnchorID:  section.AnchorID,
 			Package:   section.Package,
 			ShortName: section.ShortName,
-			Count:     countSectionChanges(section, status),
+			Count:     countSectionChanges(section, mode),
 		})
 	}
 	return out
 }
 
-func countSectionChanges(section pkgSectionData, status string) int {
-	total := 0
-	for _, statusSection := range section.StatusSections {
-		switch status {
-		case "breaking":
-			if statusSection.AccentClass != "added" {
-				total += countStatusSectionChanges(statusSection)
-			}
-		case "added":
-			if statusSection.AccentClass == "added" {
-				total += countStatusSectionChanges(statusSection)
-			}
-		}
-	}
-	return total
-}
-
-func countStatusSectionChanges(section statusSectionData) int {
-	total := len(section.ChangeCards)
-	for _, group := range section.KindGroups {
-		total += group.Count
-	}
-	for _, block := range section.TypeDefBlocks {
-		total += block.Count
-	}
-	for _, diff := range section.StructFieldDiffs {
-		total += diff.Count
-	}
-	return total
-}
-
 func buildPackageSections(changes []SymbolChange, mode string) []pkgSectionData {
-	changes = filterChangesForSection(changes, mode)
-	byPkg := groupChangesByPackage(changes)
+	sectionChanges := filterChangesForSection(changes, mode)
+	byPkg := groupChangesByPackage(sectionChanges)
 	pkgs := sortedKeys(byPkg)
 
 	out := make([]pkgSectionData, 0, len(pkgs))
@@ -290,8 +267,8 @@ func filterChangesForSection(changes []SymbolChange, mode string) []SymbolChange
 
 func sortPackageSections(sections []pkgSectionData, mode string) {
 	sort.Slice(sections, func(i, j int) bool {
-		left := sectionSortScore(sections[i], mode)
-		right := sectionSortScore(sections[j], mode)
+		left := countSectionChanges(sections[i], mode)
+		right := countSectionChanges(sections[j], mode)
 		if left != right {
 			return left > right
 		}
@@ -299,12 +276,39 @@ func sortPackageSections(sections []pkgSectionData, mode string) {
 	})
 }
 
-func sectionSortScore(section pkgSectionData, mode string) int {
-	return countSectionChanges(section, mode)
-}
-
 func sectionAnchorID(mode, pkg string) string {
 	return mode + "-" + anchorID(pkg)
+}
+
+func countSectionChanges(section pkgSectionData, mode string) int {
+	total := 0
+	for _, statusSection := range section.StatusSections {
+		switch mode {
+		case "breaking":
+			if statusSection.AccentClass != "added" {
+				total += countStatusSectionChanges(statusSection)
+			}
+		case "added":
+			if statusSection.AccentClass == "added" {
+				total += countStatusSectionChanges(statusSection)
+			}
+		}
+	}
+	return total
+}
+
+func countStatusSectionChanges(section statusSectionData) int {
+	total := len(section.ChangeCards)
+	for _, group := range section.KindGroups {
+		total += group.Count
+	}
+	for _, block := range section.TypeDefBlocks {
+		total += block.Count
+	}
+	for _, diff := range section.StructFieldDiffs {
+		total += diff.Count
+	}
+	return total
 }
 
 func buildStatusSections(changes []SymbolChange) []statusSectionData {
@@ -394,13 +398,14 @@ func splitTypes(changes []SymbolChange) (withBody, withoutBody []SymbolChange) {
 }
 
 func buildChangeCard(ch SymbolChange) changeCardData {
+	oldSig := formatAPIValue(ch.Kind, ch.Scope, ch.Old)
+	newSig := formatAPIValue(ch.Kind, ch.Scope, ch.New)
 	return changeCardData{
-		KindLabel: ch.Kind + " signature",
-		Name:      ch.Name,
-		UnifiedDiff: buildUnifiedDiff(
-			formatAPIValue(ch.Kind, ch.Scope, ch.Old),
-			formatAPIValue(ch.Kind, ch.Scope, ch.New),
-		),
+		KindLabel:    ch.Kind + " signature",
+		Name:         ch.Name,
+		OldSignature: oldSig,
+		NewSignature: newSig,
+		UnifiedDiff:  buildUnifiedDiff(oldSig, newSig),
 	}
 }
 
@@ -526,6 +531,7 @@ func buildStructFieldDiffs(changes []SymbolChange, status string) []structFieldD
 			CountClass: countClass(status),
 			Count:      len(changes),
 			Body:       buildFallbackFieldBody(changes, status),
+			Text:       buildFallbackFieldText(changes, status),
 		}}
 	}
 
@@ -537,6 +543,7 @@ func buildStructFieldDiffs(changes []SymbolChange, status string) []structFieldD
 			CountClass: countClass(status),
 			Count:      len(fields),
 			Body:       buildStructFieldDiffBody(fields, status),
+			Text:       buildStructFieldDiffText(owner, fields, status),
 		})
 	}
 	return out
@@ -594,6 +601,23 @@ func buildStructFieldDiffBody(fields []StructFieldChange, status string) templat
 	return template.HTML(b.String())
 }
 
+func buildStructFieldDiffText(owner string, fields []StructFieldChange, status string) string {
+	prefix, _ := diffPrefix(status)
+	width := maxFieldNameWidth(fields)
+	var b strings.Builder
+	b.WriteString("type ")
+	b.WriteString(owner)
+	b.WriteString(" struct {\n")
+	for _, f := range fields {
+		b.WriteString(prefix)
+		b.WriteByte(' ')
+		b.WriteString(alignField(f.Name, f.Type, width))
+		b.WriteByte('\n')
+	}
+	b.WriteString("}")
+	return b.String()
+}
+
 func buildFallbackFieldBody(changes []SymbolChange, status string) template.HTML {
 	prefix, class := diffPrefix(status)
 	var b strings.Builder
@@ -608,6 +632,18 @@ func buildFallbackFieldBody(changes []SymbolChange, status string) template.HTML
 	return template.HTML(b.String())
 }
 
+func buildFallbackFieldText(changes []SymbolChange, status string) string {
+	prefix, _ := diffPrefix(status)
+	var b strings.Builder
+	for _, ch := range changes {
+		b.WriteString(prefix)
+		b.WriteByte(' ')
+		b.WriteString(abbreviateImportPaths(strings.TrimSpace(firstNonEmpty(ch.New, ch.Old))))
+		b.WriteByte('\n')
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
 func buildTypeDefBlock(ch SymbolChange, status string) typeDefBlockData {
 	body := ch.TypeBody
 	count := len(body.Fields) + len(body.Methods)
@@ -616,6 +652,7 @@ func buildTypeDefBlock(ch SymbolChange, status string) typeDefBlockData {
 		CountClass: countClass(status),
 		Count:      count,
 		Body:       buildTypeBody(ch.Name, body, status),
+		Text:       buildTypeBodyText(ch.Name, body, status),
 	}
 }
 
@@ -647,6 +684,38 @@ func buildTypeBody(name string, body *APITypeBody, status string) template.HTML 
 		b.WriteString(`<span class="diff-context">}</span>`)
 	}
 	return template.HTML(b.String())
+}
+
+func buildTypeBodyText(name string, body *APITypeBody, status string) string {
+	prefix, _ := diffPrefix(status)
+	var b strings.Builder
+	switch body.Kind {
+	case "struct":
+		b.WriteString("type ")
+		b.WriteString(name)
+		b.WriteString(" struct {\n")
+		width := maxRawFieldNameWidth(body.Fields)
+		for _, raw := range body.Fields {
+			fieldName, fieldType := splitNameType(abbreviateImportPaths(raw))
+			b.WriteString(prefix)
+			b.WriteByte(' ')
+			b.WriteString(alignField(fieldName, fieldType, width))
+			b.WriteByte('\n')
+		}
+		b.WriteString("}")
+	case "interface":
+		b.WriteString("type ")
+		b.WriteString(name)
+		b.WriteString(" interface {\n")
+		for _, method := range body.Methods {
+			b.WriteString(prefix)
+			b.WriteByte(' ')
+			b.WriteString(abbreviateImportPaths(method))
+			b.WriteByte('\n')
+		}
+		b.WriteString("}")
+	}
+	return b.String()
 }
 
 func diffPrefix(status string) (prefix, class string) {
