@@ -25,6 +25,8 @@ It answers one release question:
 
 ![New Features](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/02-relimpact-new-features.png)
 
+![Markdown Format](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/03-relimpact-markdown.png)
+
 ## Why
 
 Go API changes are easy to miss in a normal diff.
