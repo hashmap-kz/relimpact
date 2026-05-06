@@ -179,13 +179,13 @@ func buildVerdict(summary overallSummary) verdictData {
 		return verdictData{
 			Class: "verdict-ok",
 			Icon:  "circle-check",
-			Text:  "Compatible API changes only — no breaking changes detected.",
+			Text:  "Compatible API changes only - no breaking changes detected.",
 		}
 	}
 	return verdictData{
 		Class: "verdict-breaking",
 		Icon:  "alert-triangle",
-		Text:  "Breaking API changes detected — review before release.",
+		Text:  "Breaking API changes detected - review before release.",
 	}
 }
 
@@ -330,7 +330,7 @@ func buildUnifiedDiff(oldSig, newSig string) template.HTML {
 	var b strings.Builder
 	for _, line := range oldLines {
 		if !newSet[line] {
-			writeDiffLine(&b, "diff-removed", "−", line)
+			writeDiffLine(&b, "diff-removed", "-", line)
 		}
 	}
 	for _, line := range oldLines {
@@ -408,7 +408,7 @@ func buildConstGroup(changes []SymbolChange, status string) kindGroupData {
 
 func compactPrefix(status string) (prefix, prefixClass, countClass string) {
 	if status == "removed" {
-		return "−", "rem", "rem"
+		return "-", "rem", "rem"
 	}
 	return "+", "add", "add"
 }

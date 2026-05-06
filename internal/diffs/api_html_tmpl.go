@@ -5,15 +5,15 @@ package diffs
 //
 // Template data types:
 //
-//	"report"            → reportData
-//	"sidebar"           → []PackageChangeSummary
-//	"cards"             → overallSummary
-//	"pkg-section"       → pkgSectionData
-//	"status-section"    → statusSectionData
-//	"kind-group"        → kindGroupData
-//	"change-card"       → changeCardData
-//	"struct-field-diff" → structFieldDiffData
-//	"type-def-block"    → typeDefBlockData
+//	"report"            -> reportData
+//	"sidebar"           -> []PackageChangeSummary
+//	"cards"             -> overallSummary
+//	"pkg-section"       -> pkgSectionData
+//	"status-section"    -> statusSectionData
+//	"kind-group"        -> kindGroupData
+//	"change-card"       -> changeCardData
+//	"struct-field-diff" -> structFieldDiffData
+//	"type-def-block"    -> typeDefBlockData
 const reportTemplates = `
 {{define "report"}}<!doctype html>
 <html lang="en">
@@ -30,7 +30,7 @@ const reportTemplates = `
     <header class="hero">
       <div class="eyebrow">relimpact api</div>
       <h1>API compatibility report</h1>
-      <p class="sub">{{.Meta.Repo}} · {{.Meta.OldRef}} → {{.Meta.NewRef}} · generated {{.Meta.GeneratedAt}}</p>
+      <p class="sub">{{.Meta.Repo}} · {{.Meta.OldRef}} -> {{.Meta.NewRef}} · generated {{.Meta.GeneratedAt}}</p>
     </header>
 
     <div class="verdict {{.Verdict.Class}}">
