@@ -19,7 +19,7 @@ It answers one release question:
 
 ---
 
-## Report
+## Report Formats
 
 **Breaking Changes**
 
@@ -29,7 +29,7 @@ It answers one release question:
 
 ![New Features](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/02-relimpact-new-features.png)
 
-**PR report**
+**PR comment**
 
 ![Markdown Format](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/04-relimpact-markdown.png)
 
