@@ -2,13 +2,6 @@
 
 **Fast API compatibility reports for Go projects.**
 
-`relimpact` compares two Git refs, snapshots the exported Go API, and shows what changed: breaking changes first,
-compatible additions below.
-
-It answers one release question:
-
-> Did this change break public Go API?
-
 [![License](https://img.shields.io/github/license/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/blob/master/LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/hashmap-kz/relimpact)](https://goreportcard.com/report/github.com/hashmap-kz/relimpact)
 [![Go Reference](https://pkg.go.dev/badge/github.com/hashmap-kz/relimpact.svg)](https://pkg.go.dev/github.com/hashmap-kz/relimpact)
@@ -16,6 +9,13 @@ It answers one release question:
 [![GitHub Issues](https://img.shields.io/github/issues/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/issues)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/blob/master/go.mod#L3)
 [![Latest Release](https://img.shields.io/github/v/release/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/releases/latest)
+
+`relimpact` compares two Git refs, snapshots the exported Go API, and shows what changed: breaking changes first,
+compatible additions below.
+
+It answers one release question:
+
+> Did this change break public Go API?
 
 ---
 
