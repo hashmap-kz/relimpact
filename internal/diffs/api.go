@@ -48,6 +48,9 @@ type DiffItem struct {
 	TypeBody  *APITypeBody // non-nil only for whole-type adds/removes
 }
 
+// apiCacheSchemaVersion is embedded in cache filenames, not the directory path.
+// Schema changes invalidate old entries through filename mismatch without
+// requiring any changes to CI workflows or user configuration.
 const apiCacheSchemaVersion = "v4"
 
 type APIDiff struct {
@@ -69,7 +72,10 @@ func getCacheDir() string {
 	if dir := os.Getenv("RELIMPACT_API_CACHE_DIR"); dir != "" {
 		return dir
 	}
-	return filepath.Join(os.TempDir(), "relimpact-api-cache") // fallback for local runs
+	if userCacheDir, err := os.UserCacheDir(); err == nil {
+		return filepath.Join(userCacheDir, "relimpact")
+	}
+	return filepath.Join(os.TempDir(), "relimpact")
 }
 
 func SnapshotAPI(dir string) map[string]APIPackage {
