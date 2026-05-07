@@ -800,6 +800,11 @@ func splitNameType(raw string) (name, typ string) {
 	}
 	name = parts[0]
 	typ = strings.TrimSpace(strings.TrimPrefix(raw, name))
+	// Strip "Owner." prefix - the type checker sometimes stores fields as
+	// "TypeName.FieldName type" when they come from embedded or named structs.
+	if _, after, ok := strings.Cut(name, "."); ok && after != "" {
+		name = after
+	}
 	return name, typ
 }
 
@@ -1388,15 +1393,14 @@ func defaultString(s, fallback string) string {
 }
 
 // repoDisplayName returns a short human-readable repo identifier.
-// Absolute paths are reduced to their base directory name; empty strings
-// are returned as-is so the template can omit the field entirely.
+// Absolute and relative paths are reduced to their base name; empty strings,
+// bare dots, and other uninformative values are returned as empty so the
+// template can omit the field entirely.
 func repoDisplayName(repo string) string {
-	repo = strings.TrimSpace(repo)
-	if repo == "" {
+	repo = strings.TrimSpace(strings.TrimRight(repo, "/"))
+	if repo == "" || repo == "." || repo == ".." {
 		return ""
 	}
-	// Strip trailing slash then take the last path segment.
-	repo = strings.TrimRight(repo, "/")
 	if idx := strings.LastIndex(repo, "/"); idx >= 0 {
 		return repo[idx+1:]
 	}
