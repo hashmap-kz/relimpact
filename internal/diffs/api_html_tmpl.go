@@ -18,7 +18,7 @@ const reportTemplates = `
     <header class="hero">
       <div class="eyebrow">relimpact api</div>
       <h1>API compatibility report</h1>
-      <p class="sub">{{.Meta.Repo}} · {{.Meta.OldRef}} -> {{.Meta.NewRef}} · generated {{.Meta.GeneratedAt}}</p>
+      <p class="sub">{{if .Meta.Repo}}{{.Meta.Repo}} · {{end}}{{.Meta.OldRef}} → {{.Meta.NewRef}} · generated {{.Meta.GeneratedAt}}</p>
     </header>
 
     <div class="verdict {{.Verdict.Class}}">
