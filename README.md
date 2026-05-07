@@ -10,57 +10,30 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/blob/master/go.mod#L3)
 [![Latest Release](https://img.shields.io/github/v/release/hashmap-kz/relimpact)](https://github.com/hashmap-kz/relimpact/releases/latest)
 
-`relimpact` compares two Git refs, snapshots the exported Go API, and shows what changed: breaking changes first,
-compatible additions below.
+`relimpact` compares two Git refs, snapshots the exported Go API, and reports what changed: 
+**breaking changes first**, compatible additions below.
 
-It answers one release question:
+It is not a raw diff tool or a changelog generator. It answers one release question:
 
 > Did this change break public Go API?
 
 ---
 
-## Report Formats
+## Preview
 
 **Breaking Changes**
 
 ![Breaking Changes](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/01-relimpact-breaking-changes.png)
 
-**New Features**
+**New API**
 
-![New Features](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/02-relimpact-new-features.png)
+![New API](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/02-relimpact-new-features.png)
 
 **PR comment**
 
 ![Markdown Format](https://raw.githubusercontent.com/hashmap-kz/assets/main/relimpact/04-relimpact-markdown.png)
 
-## Why
-
-Go API changes are easy to miss in a normal diff.
-
-A renamed field, removed method, or changed return type can silently break users. 
-`relimpact` turns those changes into a release-friendly report.
-
-It is intentionally focused on **exported Go API only**
-
-## What it detects
-
-`relimpact` reports changes to exported:
-
-- packages
-- types
-- functions
-- methods
-- struct fields
-- interface methods
-- constants
-- variables
-
-The report separates:
-
-- **Breaking changes** - changed or removed API.
-- **New API** - compatible additions.
-
-## Installation
+## Install
 
 Using Go:
 
@@ -68,7 +41,7 @@ Using Go:
 go install github.com/hashmap-kz/relimpact@latest
 ```
 
-Brew:
+Using Homebrew:
 
 ```bash
 brew tap hashmap-kz/homebrew-tap
@@ -104,6 +77,8 @@ relimpact --old=v1.0.0 --new=HEAD --greedy
 ```
 
 ## GitHub Actions
+
+Generate a Markdown report and post it as a pull request comment:
 
 ```yaml
 name: API compatibility
@@ -147,7 +122,11 @@ jobs:
           header: relimpact-api-report
           recreate: true
           path: api-report.md
+```
 
+To also keep the HTML report as a CI artifact:
+
+```yaml
       - name: Upload HTML API report
         run: |
           relimpact \
@@ -162,15 +141,6 @@ jobs:
           name: api-report
           path: api-report.html
 ```
-
-## Philosophy
-
-`relimpact` is not a changelog generator.
-
-It is a compatibility report for exported Go API.
-
-If it changed what your users can import, call, implement, or compile against, it belongs in the report. 
-If it did not, it stays out.
 
 ## License
 
