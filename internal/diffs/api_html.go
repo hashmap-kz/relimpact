@@ -178,7 +178,7 @@ func (d *APIDiff) buildReportData(meta ReportMetadata) reportData {
 
 	return reportData{
 		Meta: reportMetaData{
-			Repo:        defaultString(meta.Repo, "repository"),
+			Repo:        repoDisplayName(meta.Repo),
 			OldRef:      defaultString(meta.OldRef, "old"),
 			NewRef:      defaultString(meta.NewRef, "new"),
 			GeneratedAt: meta.Now.Format("2006-01-02 15:04:05"),
@@ -341,7 +341,14 @@ func buildStatusSection(
 	section := statusSectionData{Title: title, AccentClass: accentClass}
 	if status == "changed" {
 		for _, ch := range changes {
-			section.ChangeCards = append(section.ChangeCards, buildChangeCard(ch))
+			card := buildChangeCard(ch)
+			// Skip cards where both sides format to identical text - this happens
+			// when the raw signatures differ (triggering a "changed" merge) but
+			// formatAPIValue produces the same output for both sides.
+			if card.OldSignature == card.NewSignature {
+				continue
+			}
+			section.ChangeCards = append(section.ChangeCards, card)
 		}
 		return section
 	}
@@ -409,37 +416,20 @@ func buildChangeCard(ch SymbolChange) changeCardData {
 	}
 }
 
+// buildUnifiedDiff renders oldSig and newSig as a simple before/after diff:
+// all old lines marked removed, all new lines marked added. For function
+// signatures this is clearer than a context diff - you see exactly what
+// changed without any line-matching heuristics.
+// Returns all-context lines when both sides are identical.
 func buildUnifiedDiff(oldSig, newSig string) template.HTML {
-	oldLines := strings.Split(oldSig, "\n")
-	newLines := strings.Split(newSig, "\n")
-	oldSet := lineSet(oldLines)
-	newSet := lineSet(newLines)
-
 	var b strings.Builder
-	for _, line := range oldLines {
-		if !newSet[line] {
-			writeDiffLine(&b, "diff-removed", "-", line)
-		}
+	for _, line := range strings.Split(oldSig, "\n") {
+		writeDiffLine(&b, "diff-removed", "-", line)
 	}
-	for _, line := range oldLines {
-		if newSet[line] {
-			writeDiffLine(&b, "diff-context", " ", line)
-		}
-	}
-	for _, line := range newLines {
-		if !oldSet[line] {
-			writeDiffLine(&b, "diff-added", "+", line)
-		}
+	for _, line := range strings.Split(newSig, "\n") {
+		writeDiffLine(&b, "diff-added", "+", line)
 	}
 	return template.HTML(b.String())
-}
-
-func lineSet(lines []string) map[string]bool {
-	out := make(map[string]bool, len(lines))
-	for _, line := range lines {
-		out[line] = true
-	}
-	return out
 }
 
 func writeDiffLine(b *strings.Builder, class, prefix, line string) {
@@ -468,11 +458,50 @@ func buildKindGroup(kind string, changes []SymbolChange, status string) kindGrou
 }
 
 func buildScalarTypeGroup(changes []SymbolChange, status string) kindGroupData {
-	return buildKindGroup("Type", changes, status)
+	prefix, prefixClass, countClass := compactPrefix(status)
+	rows := make([]compactRowData, 0, len(changes))
+	for _, ch := range changes {
+		// TypeBody.Kind now holds the underlying type string (e.g. "string").
+		// Render as "type Name underlying" so the reader understands the shape.
+		code := ch.Name
+		if ch.TypeBody != nil && ch.TypeBody.Kind != "" {
+			code = "type " + ch.Name + " " + ch.TypeBody.Kind
+		}
+		rows = append(rows, compactRowData{
+			PrefixClass: prefixClass,
+			Prefix:      prefix,
+			Code:        code,
+		})
+	}
+	return kindGroupData{
+		KindLabel:  pluralKind("Type"),
+		CountClass: countClass,
+		Count:      len(changes),
+		Rows:       rows,
+	}
 }
 
 func buildVarGroup(changes []SymbolChange, status string) kindGroupData {
-	return buildKindGroup("Var", changes, status)
+	prefix, prefixClass, countClass := compactPrefix(status)
+	rows := make([]compactRowData, 0, len(changes))
+	for _, ch := range changes {
+		name, typ := compactTypedSymbol(ch)
+		code := "var " + name
+		if typ != "" {
+			code += " " + typ
+		}
+		rows = append(rows, compactRowData{
+			PrefixClass: prefixClass,
+			Prefix:      prefix,
+			Code:        code,
+		})
+	}
+	return kindGroupData{
+		KindLabel:  pluralKind("Var"),
+		CountClass: countClass,
+		Count:      len(changes),
+		Rows:       rows,
+	}
 }
 
 func buildConstGroup(changes []SymbolChange, status string) kindGroupData {
@@ -542,7 +571,7 @@ func buildStructFieldDiffs(changes []SymbolChange, status string) []structFieldD
 			Title:      "type " + owner + " struct",
 			CountClass: countClass(status),
 			Count:      len(fields),
-			Body:       buildStructFieldDiffBody(fields, status),
+			Body:       buildStructFieldDiffBody(owner, fields, status),
 			Text:       buildStructFieldDiffText(owner, fields, status),
 		})
 	}
@@ -589,15 +618,15 @@ func parseFieldChange(ch SymbolChange) (StructFieldChange, bool) {
 	}, true
 }
 
-func buildStructFieldDiffBody(fields []StructFieldChange, status string) template.HTML {
+func buildStructFieldDiffBody(owner string, fields []StructFieldChange, status string) template.HTML {
 	prefix, class := diffPrefix(status)
 	width := maxFieldNameWidth(fields)
 	var b strings.Builder
-	b.WriteString(`<span class="diff-context">  {` + "\n</span>")
+	b.WriteString(`<span class="diff-context">type ` + template.HTMLEscapeString(owner) + " struct {\n</span>")
 	for _, f := range fields {
 		writeDiffLine(&b, class, prefix, alignField(f.Name, f.Type, width))
 	}
-	b.WriteString(`<span class="diff-context">  }</span>`)
+	b.WriteString(`<span class="diff-context">}</span>`)
 	return template.HTML(b.String())
 }
 
@@ -1356,4 +1385,20 @@ func defaultString(s, fallback string) string {
 		return fallback
 	}
 	return s
+}
+
+// repoDisplayName returns a short human-readable repo identifier.
+// Absolute paths are reduced to their base directory name; empty strings
+// are returned as-is so the template can omit the field entirely.
+func repoDisplayName(repo string) string {
+	repo = strings.TrimSpace(repo)
+	if repo == "" {
+		return ""
+	}
+	// Strip trailing slash then take the last path segment.
+	repo = strings.TrimRight(repo, "/")
+	if idx := strings.LastIndex(repo, "/"); idx >= 0 {
+		return repo[idx+1:]
+	}
+	return repo
 }

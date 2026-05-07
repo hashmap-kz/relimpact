@@ -48,7 +48,7 @@ type DiffItem struct {
 	TypeBody  *APITypeBody // non-nil only for whole-type adds/removes
 }
 
-const apiCacheSchemaVersion = "v3"
+const apiCacheSchemaVersion = "v4"
 
 type APIDiff struct {
 	FuncsAdded     []DiffItem `json:"funcs_added,omitempty"`
@@ -180,15 +180,22 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 						atype.Methods = append(atype.Methods, m.Name()+signatureString(m.Type().(*types.Signature)))
 					}
 				default:
-					atype.Kind = fmt.Sprintf("%T", ut)
+					// Store the underlying type string (e.g. "string", "int") so the
+					// report can render "type Foo string" instead of a reflect name.
+					atype.Kind = types.TypeString(ut, nil)
 				}
 
-				methodSet := types.NewMethodSet(o.Type())
-				for i := 0; i < methodSet.Len(); i++ {
-					m := methodSet.At(i)
-					if m.Obj().Exported() {
-						//nolint:errcheck
-						atype.Methods = append(atype.Methods, m.Obj().Name()+signatureString(m.Obj().Type().(*types.Signature)))
+				// Only collect pointer-receiver methods for non-interface types.
+				// Interface methods are already captured above via ut.NumMethods();
+				// running methodSet on an interface produces duplicates.
+				if _, isIface := o.Type().Underlying().(*types.Interface); !isIface {
+					methodSet := types.NewMethodSet(types.NewPointer(o.Type()))
+					for i := 0; i < methodSet.Len(); i++ {
+						m := methodSet.At(i)
+						if m.Obj().Exported() {
+							//nolint:errcheck
+							atype.Methods = append(atype.Methods, m.Obj().Name()+signatureString(m.Obj().Type().(*types.Signature)))
+						}
 					}
 				}
 
