@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
-	"github.com/hashmap-kz/relimpact/cmd"
+	"github.com/hashmap-kz/relimpact/internal/cmd"
+
 	"github.com/hashmap-kz/relimpact/internal/loggr"
 	"github.com/hashmap-kz/relimpact/internal/x/fmtx"
 )
@@ -18,6 +21,7 @@ func main() {
 	format := flag.String("format", "markdown", "report format: markdown or html")
 	outputFile := flag.String("output", "", "write report to file instead of stdout")
 	greedy := flag.Bool("greedy", false, "use maximum concurrency")
+	timeoutFlag := flag.Duration("timeout", 10*time.Minute, `operation timeout, e.g. "5m", "30s" (default "10m")`)
 
 	flag.Usage = usage
 
@@ -41,11 +45,14 @@ func main() {
 	// TODO: make log level configurable via env/CLI.
 	loggr.Init(loggr.LevelTrace, "relimpact")
 
+	ctx, cancel := context.WithTimeout(context.Background(), *timeoutFlag)
+	defer cancel()
+
 	var report string
 	if *greedy {
-		report = cmd.CreateAPIReport(*dir, *oldRef, *newRef, reportFormat)
+		report = cmd.CreateAPIReportConcurrently(ctx, *dir, *oldRef, *newRef, reportFormat)
 	} else {
-		report = cmd.CreateAPIReportSequential(*dir, *oldRef, *newRef, reportFormat)
+		report = cmd.CreateAPIReportSequential(ctx, *dir, *oldRef, *newRef, reportFormat)
 	}
 
 	if *outputFile == "" {
@@ -73,8 +80,12 @@ Flags:
   --dir string       path to git repository (default ".")
   --format string    report format: markdown or html (default "markdown")
   --output string    write report to file instead of stdout
+  --timeout duration overall operation timeout, e.g. "5m", "30s" (default "10m")
   --greedy           use maximum concurrency
   -h, --help         show help
+
+Environment:
+  RELIMPACT_API_CACHE_DIR  override the directory used for API snapshot cache
 
 Examples:
   relimpact --old v1.0.0 --new HEAD

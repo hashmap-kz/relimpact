@@ -1,6 +1,7 @@
 package gitutils
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -39,7 +40,7 @@ func TestCheckoutAndCleanupWorktree(t *testing.T) {
 	// git worktree must be run inside repo!
 	require.NoError(t, os.Chdir(tmpDir))
 
-	worktreeDir := CheckoutWorktree(tmpDir, "v1")
+	worktreeDir := CheckoutWorktree(context.Background(), tmpDir, "v1")
 
 	// Verify worktree dir exists and contains file.txt
 	_, err = os.Stat(filepath.Join(worktreeDir, "file.txt"))
