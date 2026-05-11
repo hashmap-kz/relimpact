@@ -77,9 +77,9 @@ Required:
   --new string       new git ref, tag, branch, or commit
 
 Flags:
-  --dir string       path to git repository (default ".")
-  --format string    report format: markdown or html (default "markdown")
-  --output string    write report to file instead of stdout
+  --dir     string   path to git repository (default ".")
+  --format  string   report format: markdown or html (default "markdown")
+  --output  string   write report to file instead of stdout
   --timeout duration overall operation timeout, e.g. "5m", "30s" (default "10m")
   --greedy           use maximum concurrency
   -h, --help         show help
