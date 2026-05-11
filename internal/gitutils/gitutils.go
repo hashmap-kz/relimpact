@@ -1,27 +1,30 @@
 package gitutils
 
 import (
+	"context"
 	"io"
 	"log"
 	"os"
 	"os/exec"
 )
 
-func CheckoutWorktree(repoDir, ref string) string {
+func CheckoutWorktree(ctx context.Context, repoDir, ref string) string {
 	tmpDir, err := os.MkdirTemp("", "apidiff-"+ref)
 	if err != nil {
 		log.Fatal(err)
 	}
-	runGitInDir(repoDir, "worktree", "add", "--detach", tmpDir, ref)
+	runGitInDir(ctx, repoDir, "worktree", "add", "--detach", tmpDir, ref)
 	return tmpDir
 }
 
+// CleanupWorktree removes the worktree unconditionally; it uses a fresh
+// context so that an expired deadline does not prevent cleanup.
 func CleanupWorktree(repoDir, path string) {
-	runGitInDir(repoDir, "worktree", "remove", "--force", path)
+	runGitInDir(context.Background(), repoDir, "worktree", "remove", "--force", path)
 }
 
-func runGitInDir(dir string, args ...string) {
-	cmd := exec.Command("git", args...)
+func runGitInDir(ctx context.Context, dir string, args ...string) {
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard

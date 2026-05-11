@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -1243,8 +1244,14 @@ var importPathRE = regexp.MustCompile(
 	`([A-Za-z0-9_./~-]+/[A-Za-z0-9_./~-]+)\.([A-Za-z_][A-Za-z0-9_]*)`,
 )
 
+var abbreviateCache sync.Map
+
 func abbreviateImportPaths(s string) string {
-	return importPathRE.ReplaceAllStringFunc(s, func(match string) string {
+	if v, ok := abbreviateCache.Load(s); ok {
+		//nolint:errcheck
+		return v.(string)
+	}
+	result := importPathRE.ReplaceAllStringFunc(s, func(match string) string {
 		idx := strings.LastIndex(match, ".")
 		if idx < 0 {
 			return match
@@ -1256,6 +1263,8 @@ func abbreviateImportPaths(s string) string {
 		}
 		return path + "." + ident
 	})
+	abbreviateCache.Store(s, result)
+	return result
 }
 
 func cleanAPILabel(fallback, label string) string {

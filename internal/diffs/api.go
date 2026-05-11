@@ -1,6 +1,7 @@
 package diffs
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"go/token"
@@ -72,10 +73,10 @@ func getCacheDir() string {
 	return filepath.Join(os.TempDir(), "relimpact-api-cache") // fallback for local runs
 }
 
-func SnapshotAPI(dir string) map[string]APIPackage {
+func SnapshotAPI(ctx context.Context, dir string) map[string]APIPackage {
 	// TODO: debuglog
 
-	sha := getGitCommitSHA(dir)
+	sha := getGitCommitSHA(ctx, dir)
 	cachePath := filepath.Join(getCacheDir(), apiCacheSchemaVersion+"-"+sha+".json")
 	loggr.Debugf("cache path: %s", cachePath)
 
@@ -101,8 +102,9 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 	// }
 
 	cfg := &packages.Config{
-		Mode: packages.NeedName | packages.NeedTypes | packages.NeedImports,
-		Dir:  dir,
+		Context: ctx,
+		Mode:    packages.NeedName | packages.NeedTypes | packages.NeedImports,
+		Dir:     dir,
 	}
 
 	// NOTE: this is the most expensive routine in the whole app.
@@ -116,7 +118,7 @@ func SnapshotAPI(dir string) map[string]APIPackage {
 
 	loggr.Debugf("packages load. time=%s, sha=%s", time.Since(loadStart).String(), sha)
 
-	modulePath := getModulePath(dir)
+	modulePath := getModulePath(ctx, dir)
 	api := make(map[string]APIPackage)
 
 	for _, pkg := range pkgs {
@@ -381,8 +383,8 @@ func diffList(label, path string, oldList, newList []string) (added, removed []D
 	return added, removed
 }
 
-func getModulePath(dir string) string {
-	cmd := exec.Command("go", "list", "-m")
+func getModulePath(ctx context.Context, dir string) string {
+	cmd := exec.CommandContext(ctx, "go", "list", "-m")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
@@ -391,8 +393,8 @@ func getModulePath(dir string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func getGitCommitSHA(dir string) string {
-	cmd := exec.Command("git", "rev-parse", "HEAD")
+func getGitCommitSHA(ctx context.Context, dir string) string {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {

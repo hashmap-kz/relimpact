@@ -1,34 +1,23 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/hashmap-kz/relimpact/internal/diffs"
 	"github.com/hashmap-kz/relimpact/internal/gitutils"
 	"github.com/hashmap-kz/relimpact/internal/loggr"
 )
 
-type ReportFormat string
-
-const (
-	ReportFormatMarkdown ReportFormat = "markdown"
-	ReportFormatHTML     ReportFormat = "html"
-)
-
-func CreateChangelog(repoDir, oldRef, newRef string) string {
-	return CreateAPIReport(repoDir, oldRef, newRef, ReportFormatMarkdown)
-}
-
-func CreateAPIReport(repoDir, oldRef, newRef string, format ReportFormat) string {
+func CreateAPIReportConcurrently(ctx context.Context, repoDir, oldRef, newRef string, format ReportFormat) string {
 	// 1. Concurrent checkout old/new worktrees.
-	tmpOld, tmpNew := checkout(repoDir, oldRef, newRef)
+	tmpOld, tmpNew := checkout(ctx, repoDir, oldRef, newRef)
 	defer gitutils.CleanupWorktree(repoDir, tmpOld)
 	defer gitutils.CleanupWorktree(repoDir, tmpNew)
 
 	// 2. Concurrent API snapshots.
-	oldAPI, newAPI := snap(tmpOld, tmpNew)
+	oldAPI, newAPI := snap(ctx, tmpOld, tmpNew)
 
 	// 3. Render API-only report.
 	apiDiff := diffs.DiffAPI(oldAPI, newAPI)
@@ -36,7 +25,7 @@ func CreateAPIReport(repoDir, oldRef, newRef string, format ReportFormat) string
 }
 
 //nolint:gocritic
-func checkout(repoDir, oldRef, newRef string) (string, string) {
+func checkout(ctx context.Context, repoDir, oldRef, newRef string) (string, string) {
 	type worktreeResult struct {
 		which string
 		path  string
@@ -51,7 +40,7 @@ func checkout(repoDir, oldRef, newRef string) (string, string) {
 				worktreeCh <- worktreeResult{"old", "", fmt.Errorf("checkout old failed: %v", r)}
 			}
 		}()
-		path := gitutils.CheckoutWorktree(repoDir, oldRef)
+		path := gitutils.CheckoutWorktree(ctx, repoDir, oldRef)
 		worktreeCh <- worktreeResult{"old", path, nil}
 	}()
 
@@ -61,7 +50,7 @@ func checkout(repoDir, oldRef, newRef string) (string, string) {
 				worktreeCh <- worktreeResult{"new", "", fmt.Errorf("checkout new failed: %v", r)}
 			}
 		}()
-		path := gitutils.CheckoutWorktree(repoDir, newRef)
+		path := gitutils.CheckoutWorktree(ctx, repoDir, newRef)
 		worktreeCh <- worktreeResult{"new", path, nil}
 	}()
 
@@ -84,7 +73,7 @@ func checkout(repoDir, oldRef, newRef string) (string, string) {
 }
 
 //nolint:gocritic
-func snap(tmpOld, tmpNew string) (map[string]diffs.APIPackage, map[string]diffs.APIPackage) {
+func snap(ctx context.Context, tmpOld, tmpNew string) (map[string]diffs.APIPackage, map[string]diffs.APIPackage) {
 	var wgSnapshots sync.WaitGroup
 	apiOldCh := make(chan map[string]diffs.APIPackage, 1)
 	apiNewCh := make(chan map[string]diffs.APIPackage, 1)
@@ -92,11 +81,11 @@ func snap(tmpOld, tmpNew string) (map[string]diffs.APIPackage, map[string]diffs.
 	wgSnapshots.Add(2)
 	go func() {
 		defer wgSnapshots.Done()
-		apiOldCh <- diffs.SnapshotAPI(tmpOld)
+		apiOldCh <- diffs.SnapshotAPI(ctx, tmpOld)
 	}()
 	go func() {
 		defer wgSnapshots.Done()
-		apiNewCh <- diffs.SnapshotAPI(tmpNew)
+		apiNewCh <- diffs.SnapshotAPI(ctx, tmpNew)
 	}()
 
 	wgSnapshots.Wait()
@@ -107,17 +96,4 @@ func snap(tmpOld, tmpNew string) (map[string]diffs.APIPackage, map[string]diffs.
 	newAPI := <-apiNewCh
 
 	return oldAPI, newAPI
-}
-
-func renderAPIReport(apiDiff *diffs.APIDiff, repoDir, oldRef, newRef string, format ReportFormat) string {
-	meta := diffs.ReportMetadata{
-		Repo:   repoDir,
-		OldRef: oldRef,
-		NewRef: newRef,
-		Now:    time.Now(),
-	}
-	if format == ReportFormatHTML {
-		return apiDiff.HTML(meta)
-	}
-	return apiDiff.Markdown(meta)
 }
