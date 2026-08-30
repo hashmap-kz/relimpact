@@ -1,0 +1,44 @@
+---
+name: Integration tests
+
+on:
+  push:
+    branches: &branches
+      - "master"
+      - "release/**"
+    paths-ignore: &paths-ignore
+      - ".github/**"
+      - ".run/**"
+      - ".vscode/**"
+      - "docs/**"
+      - "examples/**"
+      - "charts/**"
+      - "hack/**"
+      - "ui/static/**"
+      - "**/*.md"
+      - "**/*.gitignore"
+      - "**/*.gitattributes"
+      - "Makefile"
+      - ".golangci.yml"
+  pull_request:
+    branches: *branches
+    paths-ignore: *paths-ignore
+  workflow_dispatch:
+
+jobs:
+  ci_job:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run integration tests
+        run: make test-integ
+        shell: bash
